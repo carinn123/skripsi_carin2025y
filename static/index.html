@@ -34,7 +34,7 @@
 
     .chart-container { background:#f8f9fa; border-radius:10px; padding:1rem; margin:1rem 0; min-height:320px;
       display:flex; align-items:center; justify-content:center; border:2px dashed #dee2e6; position:relative; }
-    #trendChart { width:100%; height:320px; }
+    #trendChart, #predChart { width:100%; height:320px; }
     .chart-placeholder { position:absolute; color:#6c757d; font-size:1.05rem; text-align:center; }
 
     .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:1rem; margin:2rem 0; }
@@ -318,8 +318,28 @@
   // ====== Util umum ======
   const rupiah = n => new Intl.NumberFormat('id-ID').format(n);
 
+  // Normalisasi nama provinsi supaya cocok meski beda ejaan/kapital/spasi
+  function normProv(s){
+    return (s||"")
+      .toString()
+      .toLowerCase()
+      .replace(/provinsi|propinsi|prov\./g, "") // buang label
+      .replace(/\s+/g, "")                      // buang spasi
+      .replace(/[^\w]/g, "");                   // buang tanda baca
+  }
+
+  // Cache GeoJSON di memori
+  let __PROV_GJ = null;
+  async function getProvGeoJSON() {
+    if (__PROV_GJ) return __PROV_GJ;
+    // pastikan file berada di: static/indonesia_provinces.geojson
+    const r = await fetch('/indonesia_provinces.geojson?v=1', { cache: 'no-store' });
+    if (!r.ok) throw new Error('GeoJSON provinsi tidak ditemukan');
+    __PROV_GJ = await r.json();
+    return __PROV_GJ;
+  }
+
   // =================== BERANDA: PETA CHOROPLETH ===================
-  // Load daftar pulau
   (async function initIslands(){
     try{
       const res = await fetch('/api/islands');
@@ -333,7 +353,6 @@
     }catch(e){ console.error(e); }
   })();
 
-  // Leaflet map init
   let map, geoLayer;
   function ensureMap(){
     if (map) return map;
@@ -366,35 +385,44 @@
       if(!res.ok) throw new Error(js.error || 'Server error');
 
       const m = ensureMap();
+      const gj = await getProvGeoJSON();
 
-      // ambil geojson provinsi
-      const gjRes = await fetch('/indonesia_provinces.geojson');
-      const gj = await gjRes.json();
-
-      // lookup data nilai per provinsi
-      const vmap = Object.fromEntries(js.data.map(d => [d.province.toLowerCase(), {val:d.value, cat:d.category}]));
+      // lookup data nilai per provinsi (key sudah dinormalisasi)
+      const vmap = Object.fromEntries(
+        js.data.map(d => [ normProv(d.province), {val:d.value, cat:d.category, label:d.province} ])
+      );
 
       // hapus layer lama
       if (geoLayer) geoLayer.remove();
 
       geoLayer = L.geoJSON(gj, {
         style: feature => {
-          const name = (feature.properties.provinsi || feature.properties.name || '').toLowerCase();
-          const rec  = vmap[name];
+          // ambil nama prov dari berbagai kemungkinan properti
+          const rawName = feature.properties.Propinsi
+                       || feature.properties.PROVINSI
+                       || feature.properties.provinsi
+                       || feature.properties.name
+                       || feature.properties.NAMOBJ
+                       || "";
+          const rec  = vmap[normProv(rawName)];
           const fill = rec ? colorByCat(rec.cat) : '#bdc3c7';
           return { color:'#fff', weight:1, fillColor: fill, fillOpacity: 0.8 };
         },
         onEachFeature: (feature, layer) => {
-          const name = (feature.properties.provinsi || feature.properties.name || '');
-          const key  = name.toLowerCase();
-          const rec  = vmap[key];
+          const rawName = feature.properties.Propinsi
+                       || feature.properties.PROVINSI
+                       || feature.properties.provinsi
+                       || feature.properties.name
+                       || feature.properties.NAMOBJ
+                       || "—";
+          const rec  = vmap[normProv(rawName)];
           const val  = rec ? Math.round(rec.val) : null;
           const cat  = rec ? rec.cat : 'no-data';
-          layer.bindPopup(`<b>${name}</b><br/>${val?('Rp ' + rupiah(val)):'—'}<br/>Kategori: ${cat}`);
+          layer.bindPopup(`<b>${rawName}</b><br/>${val?('Rp ' + rupiah(val)):'—'}<br/>Kategori: ${cat}`);
         }
       }).addTo(m);
 
-      m.fitBounds(geoLayer.getBounds(), {padding:[20,20]});
+      try { m.fitBounds(geoLayer.getBounds(), {padding:[20,20]}); } catch(e) {}
 
       // update stat kecil
       document.getElementById('statPulau').textContent = island || 'Semua Pulau';
@@ -475,7 +503,6 @@
       const fmt = n => (n==null||Number.isNaN(n))? "-" : rupiah(Math.round(n));
       document.getElementById('hargaMin').textContent  = fmt(s.min);
       document.getElementById('hargaMax').textContent  = fmt(s.max);
-      document.getElementById,'hargaRata'; // prevent linter
       document.getElementById('hargaRata').textContent = fmt(s.mean);
       document.getElementById('volatilitas').textContent = (s.vol_pct==null? "-" : s.vol_pct.toFixed(2));
 

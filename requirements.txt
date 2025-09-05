@@ -6,3 +6,9 @@ scikit-learn
 joblib
 openpyxl     # untuk baca Excel (dataset_filled_ffill_bfill.xlsx)
 xlrd         # fallback reader Excel (opsional, tapi sering dibutuhkan)
+geopandas 
+rapidfuzz 
+shapely
+fiona
+pyproj
+rtree

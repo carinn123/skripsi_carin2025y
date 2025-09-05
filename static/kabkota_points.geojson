@@ -1,0 +1,1653 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          126.656549,
+          -3.4593849
+        ]
+      },
+      "properties": {
+        "name": "Kota Maluku",
+        "province": "MALUKU",
+        "value": 22000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          116.8593379,
+          -1.2398711
+        ]
+      },
+      "properties": {
+        "name": "Kota Balikpapan",
+        "province": "KALIMANTAN TIMUR",
+        "value": 21700.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          95.3192908,
+          5.5528455
+        ]
+      },
+      "properties": {
+        "name": "Kota Banda Aceh",
+        "province": "ACEH",
+        "value": 21700.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          105.2643742,
+          -5.4460713
+        ]
+      },
+      "properties": {
+        "name": "Kota Bandar Lampung",
+        "province": "LAMPUNG",
+        "value": 19550.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          107.6070833,
+          -6.9218457
+        ]
+      },
+      "properties": {
+        "name": "Kota Bandung",
+        "province": "JAWA BARAT",
+        "value": 20450.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          122.6975066,
+          -0.9210461
+        ]
+      },
+      "properties": {
+        "name": "Kota Banggai",
+        "province": "SULAWESI TENGAH",
+        "value": 19600.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          114.5925828,
+          -3.3187496
+        ]
+      },
+      "properties": {
+        "name": "Kota Banjarmasin",
+        "province": "KALIMANTAN SELATAN",
+        "value": 20750.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          109.1167465,
+          -7.4550716
+        ]
+      },
+      "properties": {
+        "name": "Kab. Banyumas",
+        "province": "JAWA TENGAH",
+        "value": 20200.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          114.141579,
+          -8.3325711
+        ]
+      },
+      "properties": {
+        "name": "Kab. Banyuwangi",
+        "province": "JAWA TIMUR",
+        "value": 20450.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          104.0383696,
+          1.1030815
+        ]
+      },
+      "properties": {
+        "name": "Kota Batam",
+        "province": "KEPULAUAN RIAU",
+        "value": 19150.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          122.5984762,
+          -5.4578127
+        ]
+      },
+      "properties": {
+        "name": "Kota Bau - Bau",
+        "province": "SULAWESI TENGGARA",
+        "value": 23900.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.9945444,
+          -6.2349858
+        ]
+      },
+      "properties": {
+        "name": "Kota Bekasi",
+        "province": "JAWA BARAT",
+        "value": 20850.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          102.2623797,
+          -3.7922858
+        ]
+      },
+      "properties": {
+        "name": "Kota Bengkulu",
+        "province": "BENGKULU",
+        "value": 19800.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          119.0047752,
+          -9.5466677
+        ]
+      },
+      "properties": {
+        "name": "Kota Bima",
+        "province": "NUSA TENGGARA TIMUR",
+        "value": 21850.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          112.3115572,
+          -8.1311983
+        ]
+      },
+      "properties": {
+        "name": "Kota Blitar",
+        "province": "JAWA TIMUR",
+        "value": 19050.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.7972421,
+          -6.5962986
+        ]
+      },
+      "properties": {
+        "name": "Kota Bogor",
+        "province": "JAWA BARAT",
+        "value": 21250.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          117.471708,
+          0.1236548
+        ]
+      },
+      "properties": {
+        "name": "Kota Bontang",
+        "province": "KALIMANTAN TIMUR",
+        "value": 20750.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.5972919,
+          -7.5313771
+        ]
+      },
+      "properties": {
+        "name": "Kab. Boyolali",
+        "province": "JAWA TENGAH",
+        "value": 18300.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          120.2333007,
+          -5.766667
+        ]
+      },
+      "properties": {
+        "name": "Kab. Bulukomba",
+        "province": "SULAWESI SELATAN",
+        "value": 19650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          117.0743468,
+          2.7620341
+        ]
+      },
+      "properties": {
+        "name": "Kab. Bulungan",
+        "province": "KALIMANTAN UTARA",
+        "value": 20650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          101.9847534,
+          -1.5161123
+        ]
+      },
+      "properties": {
+        "name": "Kab. Bungo",
+        "province": "JAMBI",
+        "value": 20500.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          108.8046146,
+          -7.461671
+        ]
+      },
+      "properties": {
+        "name": "Kab. Cilacap",
+        "province": "JAWA TENGAH",
+        "value": 20500.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.0537688,
+          -6.017389
+        ]
+      },
+      "properties": {
+        "name": "Kota Cilegon",
+        "province": "BANTEN",
+        "value": 18650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          108.5608483,
+          -6.7137044
+        ]
+      },
+      "properties": {
+        "name": "Kota Cirebon",
+        "province": "JAWA BARAT",
+        "value": 20050.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          108.5608483,
+          -6.7137044
+        ]
+      },
+      "properties": {
+        "name": "Kab. Cirebon",
+        "province": "JAWA BARAT",
+        "value": 19950.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.2191175,
+          -8.6524973
+        ]
+      },
+      "properties": {
+        "name": "Kota Denpasar",
+        "province": "BALI",
+        "value": 22200.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.8158371,
+          -6.40719
+        ]
+      },
+      "properties": {
+        "name": "Kota Depok",
+        "province": "JAWA BARAT",
+        "value": 20500.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          101.4333,
+          1.667111
+        ]
+      },
+      "properties": {
+        "name": "Kota Dumai",
+        "province": "KEPULAUAN RIAU",
+        "value": 20000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          123.0594971,
+          0.5384433
+        ]
+      },
+      "properties": {
+        "name": "Kota Gorontalo",
+        "province": "GORONTALO",
+        "value": 25550.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          123.0594971,
+          0.5384433
+        ]
+      },
+      "properties": {
+        "name": "Kab. Gorontalo",
+        "province": "GORONTALO",
+        "value": 24650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          97.6,
+          1.283333
+        ]
+      },
+      "properties": {
+        "name": "Kota Gunung Sitoli",
+        "province": "SUMATERA UTARA",
+        "value": 22950.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.8428715,
+          -6.18234
+        ]
+      },
+      "properties": {
+        "name": "Kota Jakarta Pusat",
+        "province": "DKI JAKARTA",
+        "value": 20650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          103.6077806,
+          -1.6296917
+        ]
+      },
+      "properties": {
+        "name": "Kota Jambi",
+        "province": "JAMBI",
+        "value": 20100.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.7037389,
+          -2.5387539
+        ]
+      },
+      "properties": {
+        "name": "Kota Jayapura",
+        "province": "PAPUA",
+        "value": 22750.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          138.9650306,
+          -4.1152787
+        ]
+      },
+      "properties": {
+        "name": "Kab. Jayawijaya",
+        "province": "PAPUA",
+        "value": 31600.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          113.7021772,
+          -8.1688563
+        ]
+      },
+      "properties": {
+        "name": "Kab. Jember",
+        "province": "JAWA TIMUR",
+        "value": 19350.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          111.5598118,
+          0.1927001
+        ]
+      },
+      "properties": {
+        "name": "Kab. Sintang",
+        "province": "KALIMANTAN BARAT",
+        "value": 21650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          111.0698003,
+          -7.6196965
+        ]
+      },
+      "properties": {
+        "name": "Kab. Karanganyar",
+        "province": "JAWA TENGAH",
+        "value": 20000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          112.0046051,
+          -7.8111057
+        ]
+      },
+      "properties": {
+        "name": "Kota Kediri",
+        "province": "JAWA TIMUR",
+        "value": 20000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          122.5180066,
+          -3.9918068
+        ]
+      },
+      "properties": {
+        "name": "Kota Kendari",
+        "province": "SULAWESI TENGGARA",
+        "value": 20650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.6284785,
+          -7.6732387
+        ]
+      },
+      "properties": {
+        "name": "Kab. Klaten",
+        "province": "JAWA TENGAH",
+        "value": 18400.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          124.3154057,
+          0.7352231
+        ]
+      },
+      "properties": {
+        "name": "Kotamobagu",
+        "province": "SULAWESI UTARA",
+        "value": 19350.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.8679109,
+          -6.7978494
+        ]
+      },
+      "properties": {
+        "name": "Kab. Kudus",
+        "province": "JAWA TENGAH",
+        "value": 19850.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          123.6017755,
+          -10.1632209
+        ]
+      },
+      "properties": {
+        "name": "Kota Kupang",
+        "province": "NUSA TENGGARA TIMUR",
+        "value": 20700.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          97.1480544,
+          5.1789659
+        ]
+      },
+      "properties": {
+        "name": "Kota Lhokseumawe",
+        "province": "ACEH",
+        "value": 20950.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          116.5313333,
+          -8.6471975
+        ]
+      },
+      "properties": {
+        "name": "Kab. Lombok Timur",
+        "province": "NUSA TENGGARA TIMUR",
+        "value": 22000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          102.8584881,
+          -3.2914053
+        ]
+      },
+      "properties": {
+        "name": "Kota Lubuk Linggau",
+        "province": "SUMATERA SELATAN",
+        "value": 20350.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          111.5168819,
+          -7.6290837
+        ]
+      },
+      "properties": {
+        "name": "Kota Madiun",
+        "province": "JAWA TIMUR",
+        "value": 20000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          118.9607438,
+          -3.5459286
+        ]
+      },
+      "properties": {
+        "name": "Kab. Majene",
+        "province": "SULAWESI BARAT",
+        "value": 20400.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          119.4124282,
+          -5.1342962
+        ]
+      },
+      "properties": {
+        "name": "Kota Makassar",
+        "province": "SULAWESI SELATAN",
+        "value": 19850.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          112.6340265,
+          -7.9771308
+        ]
+      },
+      "properties": {
+        "name": "Kota Malang",
+        "province": "JAWA TIMUR",
+        "value": 20550.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          118.8847947,
+          -2.6756302
+        ]
+      },
+      "properties": {
+        "name": "Kota Mamuju",
+        "province": "SULAWESI BARAT",
+        "value": 20650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          124.8408708,
+          1.4900578
+        ]
+      },
+      "properties": {
+        "name": "Kota Manado",
+        "province": "SULAWESI UTARA",
+        "value": 18200.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          133.7538039,
+          -0.9776762
+        ]
+      },
+      "properties": {
+        "name": "Kab. Manokwari",
+        "province": "PAPUA BARAT",
+        "value": 22900.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          116.1209516,
+          -8.5871166
+        ]
+      },
+      "properties": {
+        "name": "Kota Mataram",
+        "province": "NUSA TENGGARA TIMUR",
+        "value": 21250.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          122.2192885,
+          -8.6256456
+        ]
+      },
+      "properties": {
+        "name": "Kota Maumere",
+        "province": "NUSA TENGGARA TIMUR",
+        "value": 22750.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          98.6741623,
+          3.5894617
+        ]
+      },
+      "properties": {
+        "name": "Kota Medan",
+        "province": "SUMATERA UTARA",
+        "value": 19650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.0183252,
+          -7.7925193
+        ]
+      },
+      "properties": {
+        "name": "Kab. Merauke",
+        "province": "PAPUA",
+        "value": 22200.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          105.3078642,
+          -5.1078839
+        ]
+      },
+      "properties": {
+        "name": "Kota Metro",
+        "province": "LAMPUNG",
+        "value": 20300.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          96.1339107,
+          4.1481951
+        ]
+      },
+      "properties": {
+        "name": "Kota Meulaboh",
+        "province": "DI. ACEH",
+        "value": 20350.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          136.9477964,
+          -4.5875259
+        ]
+      },
+      "properties": {
+        "name": "Kab. Mimika",
+        "province": "PAPUA",
+        "value": 22900.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          135.5023653,
+          -3.360285
+        ]
+      },
+      "properties": {
+        "name": "Kab. Nabire",
+        "province": "PAPUA",
+        "value": 22950.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          100.3632561,
+          -0.9247587
+        ]
+      },
+      "properties": {
+        "name": "Kota Padang",
+        "province": "SUMATERA BARAT",
+        "value": 19950.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          99.2727172,
+          1.372696
+        ]
+      },
+      "properties": {
+        "name": "Kota Padang Sidempuan",
+        "province": "SUMATERA UTARA",
+        "value": 19650.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          113.9164372,
+          -2.2072919
+        ]
+      },
+      "properties": {
+        "name": "Kota Palangkaraya",
+        "province": "KALIMANTAN TENGAH",
+        "value": 21850.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          104.7568507,
+          -2.9888243
+        ]
+      },
+      "properties": {
+        "name": "Kota Palembang",
+        "province": "SUMATERA SELATAN",
+        "value": 22900.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          120.1920679,
+          -2.9996306
+        ]
+      },
+      "properties": {
+        "name": "Kota Palopo",
+        "province": "SULAWESI SELATAN",
+        "value": null,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          119.8722373,
+          -0.9051548
+        ]
+      },
+      "properties": {
+        "name": "Kota Palu",
+        "province": "SULAWESI TENGAH",
+        "value": 21450.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.1134604,
+          -2.1206733
+        ]
+      },
+      "properties": {
+        "name": "Kota Pangkalpinang",
+        "province": "BANGKA BELITUNG",
+        "value": 18550.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          119.6236101,
+          -4.0057055
+        ]
+      },
+      "properties": {
+        "name": "Kota Pare -Pare",
+        "province": "SULAWESI SELATAN",
+        "value": 20000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          101.4451559,
+          0.5071624
+        ]
+      },
+      "properties": {
+        "name": "Kota Pekanbaru",
+        "province": "KEPULAUAN RIAU",
+        "value": 20100.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          99.0653646,
+          2.9588631
+        ]
+      },
+      "properties": {
+        "name": "Kota Pematang Siantar",
+        "province": "SUMATERA UTARA",
+        "value": 19850.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          119.1450522,
+          -3.3031896
+        ]
+      },
+      "properties": {
+        "name": "Kab. Polewali Mandar",
+        "province": "SULAWESI BARAT",
+        "value": 22350.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          109.3447488,
+          -0.0226903
+        ]
+      },
+      "properties": {
+        "name": "Kota Pontianak",
+        "province": "KALIMANTAN BARAT",
+        "value": 19900.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          113.2158401,
+          -7.7441461
+        ]
+      },
+      "properties": {
+        "name": "Kota Probolinggo",
+        "province": "JAWA TIMUR",
+        "value": 19850.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          117.1393089,
+          -0.5017804
+        ]
+      },
+      "properties": {
+        "name": "Kota Samarinda",
+        "province": "KALIMANTAN TIMUR",
+        "value": 21700.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          112.949389,
+          -2.5389113
+        ]
+      },
+      "properties": {
+        "name": "Kota Sampit",
+        "province": "KALIMANTAN TENGAH",
+        "value": 20250.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.4229104,
+          -6.9903988
+        ]
+      },
+      "properties": {
+        "name": "Kota Semarang",
+        "province": "JAWA TENGAH",
+        "value": 19750.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.1518079,
+          -6.1169662
+        ]
+      },
+      "properties": {
+        "name": "Kota Serang",
+        "province": "BANTEN",
+        "value": 19000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          98.78461,
+          1.736957
+        ]
+      },
+      "properties": {
+        "name": "Kota Sibolga",
+        "province": "SUMATERA UTARA",
+        "value": 20050.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          108.9889657,
+          0.9069861
+        ]
+      },
+      "properties": {
+        "name": "Kota Singkawang",
+        "province": "KALIMANTAN BARAT",
+        "value": 19250.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          131.2544805,
+          -0.8634105
+        ]
+      },
+      "properties": {
+        "name": "Kota Sorong",
+        "province": "PAPUA BARAT",
+        "value": 23500.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.9530232,
+          -7.3924563
+        ]
+      },
+      "properties": {
+        "name": "Kab. Sragen",
+        "province": "JAWA TENGAH",
+        "value": 19300.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.9265095,
+          -6.9199289
+        ]
+      },
+      "properties": {
+        "name": "Kota Sukabumi",
+        "province": "JAWA BARAT",
+        "value": 20400.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.8700287,
+          -7.6814995
+        ]
+      },
+      "properties": {
+        "name": "Kab. Sukoharjo",
+        "province": "JAWA TENGAH",
+        "value": 19600.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          120.2094194,
+          -9.8342576
+        ]
+      },
+      "properties": {
+        "name": "Kab. Sumba Timur",
+        "province": "NUSA TENGGARA TIMUR",
+        "value": 24500.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          124.4758485,
+          -9.4164554
+        ]
+      },
+      "properties": {
+        "name": "Kab. Sumbawa",
+        "province": "NUSA TENGGARA TIMUR",
+        "value": 21050.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          113.8376708,
+          -6.9991798
+        ]
+      },
+      "properties": {
+        "name": "Kab. Sumenep",
+        "province": "JAWA TIMUR",
+        "value": 19500.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          112.7377674,
+          -7.2462836
+        ]
+      },
+      "properties": {
+        "name": "Kota Surabaya",
+        "province": "JAWA TIMUR",
+        "value": 20500.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.8218905,
+          -7.5815339
+        ]
+      },
+      "properties": {
+        "name": "Kota Surakarta (Solo)",
+        "province": "JAWA TENGAH",
+        "value": 19550.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          106.6382161,
+          -6.1761924
+        ]
+      },
+      "properties": {
+        "name": "Kota Tangerang",
+        "province": "BANTEN",
+        "value": 18250.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.383139,
+          -2.1652925
+        ]
+      },
+      "properties": {
+        "name": "Kota Tanjung",
+        "province": "KALIMANTAN SELATAN",
+        "value": 20000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          107.6544753,
+          -2.7422808
+        ]
+      },
+      "properties": {
+        "name": "Kota Tanjung Pandan",
+        "province": "BANGKA BELITUNG",
+        "value": 18000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          104.446094,
+          0.9236915
+        ]
+      },
+      "properties": {
+        "name": "Kota Tanjung Pinang",
+        "province": "KEPULAUAN RIAU",
+        "value": 18000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          117.6330159,
+          3.3000169
+        ]
+      },
+      "properties": {
+        "name": "Kota Tarakan",
+        "province": "KALIMANTAN UTARA",
+        "value": 21550.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          108.2201154,
+          -7.3262484
+        ]
+      },
+      "properties": {
+        "name": "Kota Tasikmalaya",
+        "province": "JAWA BARAT",
+        "value": 20400.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          113.8376708,
+          -6.9991798
+        ]
+      },
+      "properties": {
+        "name": "Kota Sumenep",
+        "province": "JAWA TIMUR",
+        "value": 20000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          101.4451559,
+          0.5071624
+        ]
+      },
+      "properties": {
+        "name": "Kota Tembilahan",
+        "province": "KEPULAUAN RIAU",
+        "value": 19000.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.3832342,
+          0.7852043
+        ]
+      },
+      "properties": {
+        "name": "Kota Ternate",
+        "province": "MALUKU UTARA",
+        "value": 21850.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          132.7429249,
+          -5.6389933
+        ]
+      },
+      "properties": {
+        "name": "Kota Tual",
+        "province": "MALUKU",
+        "value": 24400.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          120.3276891,
+          -4.5386807
+        ]
+      },
+      "properties": {
+        "name": "Kota Watampone",
+        "province": "SULAWESI SELATAN",
+        "value": 19050.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.9575733,
+          -7.9620507
+        ]
+      },
+      "properties": {
+        "name": "Kab. Wonogiri",
+        "province": "JAWA TENGAH",
+        "value": 18550.0,
+        "date": "2025-07-01"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          110.3646857,
+          -7.8012646
+        ]
+      },
+      "properties": {
+        "name": "Kota Yogyakarta",
+        "province": "DAERAH ISTIMEWA YOGYAKARTA",
+        "value": 19350.0,
+        "date": "2025-07-01"
+      }
+    }
+  ]
+}

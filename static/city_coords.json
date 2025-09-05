@@ -1,0 +1,517 @@
+{
+  "kota_maluku": {
+    "lat": -3.4593849,
+    "lng": 126.656549,
+    "label": "Kota Maluku"
+  },
+  "kota_balikpapan": {
+    "lat": -1.2398711,
+    "lng": 116.8593379,
+    "label": "Kota Balikpapan"
+  },
+  "kota_banda_aceh": {
+    "lat": 5.5528455,
+    "lng": 95.3192908,
+    "label": "Kota Banda Aceh"
+  },
+  "kota_bandar_lampung": {
+    "lat": -5.4460713,
+    "lng": 105.2643742,
+    "label": "Kota Bandar Lampung"
+  },
+  "kota_bandung": {
+    "lat": -6.9218457,
+    "lng": 107.6070833,
+    "label": "Kota Bandung"
+  },
+  "kota_banggai": {
+    "lat": -0.9210461,
+    "lng": 122.6975066,
+    "label": "Kota Banggai"
+  },
+  "kota_banjarmasin": {
+    "lat": -3.3187496,
+    "lng": 114.5925828,
+    "label": "Kota Banjarmasin"
+  },
+  "kab._banyumas": {
+    "lat": -7.4550716,
+    "lng": 109.1167465,
+    "label": "Kab. Banyumas"
+  },
+  "kab._banyuwangi": {
+    "lat": -8.3325711,
+    "lng": 114.141579,
+    "label": "Kab. Banyuwangi"
+  },
+  "kota_batam": {
+    "lat": 1.1030815,
+    "lng": 104.0383696,
+    "label": "Kota Batam"
+  },
+  "kota_bau_-_bau": {
+    "lat": -5.4578127,
+    "lng": 122.5984762,
+    "label": "Kota Bau - Bau"
+  },
+  "kota_bekasi": {
+    "lat": -6.2349858,
+    "lng": 106.9945444,
+    "label": "Kota Bekasi"
+  },
+  "kota_bengkulu": {
+    "lat": -3.7922858,
+    "lng": 102.2623797,
+    "label": "Kota Bengkulu"
+  },
+  "kota_bima": {
+    "lat": -9.5466677,
+    "lng": 119.0047752,
+    "label": "Kota Bima"
+  },
+  "kota_blitar": {
+    "lat": -8.1311983,
+    "lng": 112.3115572,
+    "label": "Kota Blitar"
+  },
+  "kota_bogor": {
+    "lat": -6.5962986,
+    "lng": 106.7972421,
+    "label": "Kota Bogor"
+  },
+  "kota_bontang": {
+    "lat": 0.1236548,
+    "lng": 117.471708,
+    "label": "Kota Bontang"
+  },
+  "kab._boyolali": {
+    "lat": -7.5313771,
+    "lng": 110.5972919,
+    "label": "Kab. Boyolali"
+  },
+  "kab._bulukomba": {
+    "lat": -5.766667,
+    "lng": 120.2333007,
+    "label": "Kab. Bulukomba"
+  },
+  "kab._bulungan": {
+    "lat": 2.7620341,
+    "lng": 117.0743468,
+    "label": "Kab. Bulungan"
+  },
+  "kab._bungo": {
+    "lat": -1.5161123,
+    "lng": 101.9847534,
+    "label": "Kab. Bungo"
+  },
+  "kab._cilacap": {
+    "lat": -7.461671,
+    "lng": 108.8046146,
+    "label": "Kab. Cilacap"
+  },
+  "kota_cilegon": {
+    "lat": -6.017389,
+    "lng": 106.0537688,
+    "label": "Kota Cilegon"
+  },
+  "kota_cirebon": {
+    "lat": -6.7137044,
+    "lng": 108.5608483,
+    "label": "Kota Cirebon"
+  },
+  "kab._cirebon": {
+    "lat": -6.7137044,
+    "lng": 108.5608483,
+    "label": "Kab. Cirebon"
+  },
+  "kota_denpasar": {
+    "lat": -8.6524973,
+    "lng": 115.2191175,
+    "label": "Kota Denpasar"
+  },
+  "kota_depok": {
+    "lat": -6.40719,
+    "lng": 106.8158371,
+    "label": "Kota Depok"
+  },
+  "kota_dumai": {
+    "lat": 1.667111,
+    "lng": 101.4333,
+    "label": "Kota Dumai"
+  },
+  "kota_gorontalo": {
+    "lat": 0.5384433,
+    "lng": 123.0594971,
+    "label": "Kota Gorontalo"
+  },
+  "kab._gorontalo": {
+    "lat": 0.5384433,
+    "lng": 123.0594971,
+    "label": "Kab. Gorontalo"
+  },
+  "kota_gunung_sitoli": {
+    "lat": 1.283333,
+    "lng": 97.6,
+    "label": "Kota Gunung Sitoli"
+  },
+  "kota_jakarta_pusat": {
+    "lat": -6.18234,
+    "lng": 106.8428715,
+    "label": "Kota Jakarta Pusat"
+  },
+  "kota_jambi": {
+    "lat": -1.6296917,
+    "lng": 103.6077806,
+    "label": "Kota Jambi"
+  },
+  "kota_jayapura": {
+    "lat": -2.5387539,
+    "lng": 140.7037389,
+    "label": "Kota Jayapura"
+  },
+  "kab._jayawijaya": {
+    "lat": -4.1152787,
+    "lng": 138.9650306,
+    "label": "Kab. Jayawijaya"
+  },
+  "kab._jember": {
+    "lat": -8.1688563,
+    "lng": 113.7021772,
+    "label": "Kab. Jember"
+  },
+  "kab._sintang": {
+    "lat": 0.1927001,
+    "lng": 111.5598118,
+    "label": "Kab. Sintang"
+  },
+  "kab._karanganyar": {
+    "lat": -7.6196965,
+    "lng": 111.0698003,
+    "label": "Kab. Karanganyar"
+  },
+  "kota_kediri": {
+    "lat": -7.8111057,
+    "lng": 112.0046051,
+    "label": "Kota Kediri"
+  },
+  "kota_kendari": {
+    "lat": -3.9918068,
+    "lng": 122.5180066,
+    "label": "Kota Kendari"
+  },
+  "kab._klaten": {
+    "lat": -7.6732387,
+    "lng": 110.6284785,
+    "label": "Kab. Klaten"
+  },
+  "kotamobagu": {
+    "lat": 0.7352231,
+    "lng": 124.3154057,
+    "label": "Kotamobagu"
+  },
+  "kab._kudus": {
+    "lat": -6.7978494,
+    "lng": 110.8679109,
+    "label": "Kab. Kudus"
+  },
+  "kota_kupang": {
+    "lat": -10.1632209,
+    "lng": 123.6017755,
+    "label": "Kota Kupang"
+  },
+  "kota_lhokseumawe": {
+    "lat": 5.1789659,
+    "lng": 97.1480544,
+    "label": "Kota Lhokseumawe"
+  },
+  "kab._lombok_timur": {
+    "lat": -8.6471975,
+    "lng": 116.5313333,
+    "label": "Kab. Lombok Timur"
+  },
+  "kota_lubuk_linggau": {
+    "lat": -3.2914053,
+    "lng": 102.8584881,
+    "label": "Kota Lubuk Linggau"
+  },
+  "kota_madiun": {
+    "lat": -7.6290837,
+    "lng": 111.5168819,
+    "label": "Kota Madiun"
+  },
+  "kab._majene": {
+    "lat": -3.5459286,
+    "lng": 118.9607438,
+    "label": "Kab. Majene"
+  },
+  "kota_makassar": {
+    "lat": -5.1342962,
+    "lng": 119.4124282,
+    "label": "Kota Makassar"
+  },
+  "kota_malang": {
+    "lat": -7.9771308,
+    "lng": 112.6340265,
+    "label": "Kota Malang"
+  },
+  "kota_mamuju": {
+    "lat": -2.6756302,
+    "lng": 118.8847947,
+    "label": "Kota Mamuju"
+  },
+  "kota_manado": {
+    "lat": 1.4900578,
+    "lng": 124.8408708,
+    "label": "Kota Manado"
+  },
+  "kab._manokwari": {
+    "lat": -0.9776762,
+    "lng": 133.7538039,
+    "label": "Kab. Manokwari"
+  },
+  "kota_mataram": {
+    "lat": -8.5871166,
+    "lng": 116.1209516,
+    "label": "Kota Mataram"
+  },
+  "kota_maumere": {
+    "lat": -8.6256456,
+    "lng": 122.2192885,
+    "label": "Kota Maumere"
+  },
+  "kota_medan": {
+    "lat": 3.5894617,
+    "lng": 98.6741623,
+    "label": "Kota Medan"
+  },
+  "kab._merauke": {
+    "lat": -7.7925193,
+    "lng": 140.0183252,
+    "label": "Kab. Merauke"
+  },
+  "kota_metro": {
+    "lat": -5.1078839,
+    "lng": 105.3078642,
+    "label": "Kota Metro"
+  },
+  "kota_meulaboh": {
+    "lat": 4.1481951,
+    "lng": 96.1339107,
+    "label": "Kota Meulaboh"
+  },
+  "kab._mimika": {
+    "lat": -4.5875259,
+    "lng": 136.9477964,
+    "label": "Kab. Mimika"
+  },
+  "kab._nabire": {
+    "lat": -3.360285,
+    "lng": 135.5023653,
+    "label": "Kab. Nabire"
+  },
+  "kota_padang": {
+    "lat": -0.9247587,
+    "lng": 100.3632561,
+    "label": "Kota Padang"
+  },
+  "kota_padang_sidempuan": {
+    "lat": 1.372696,
+    "lng": 99.2727172,
+    "label": "Kota Padang Sidempuan"
+  },
+  "kota_palangkaraya": {
+    "lat": -2.2072919,
+    "lng": 113.9164372,
+    "label": "Kota Palangkaraya"
+  },
+  "kota_palembang": {
+    "lat": -2.9888243,
+    "lng": 104.7568507,
+    "label": "Kota Palembang"
+  },
+  "kota_palopo": {
+    "lat": -2.9996306,
+    "lng": 120.1920679,
+    "label": "Kota Palopo"
+  },
+  "kota_palu": {
+    "lat": -0.9051548,
+    "lng": 119.8722373,
+    "label": "Kota Palu"
+  },
+  "kota_pangkalpinang": {
+    "lat": -2.1206733,
+    "lng": 106.1134604,
+    "label": "Kota Pangkalpinang"
+  },
+  "kota_pare_-pare": {
+    "lat": -4.0057055,
+    "lng": 119.6236101,
+    "label": "Kota Pare -Pare"
+  },
+  "kota_pekanbaru": {
+    "lat": 0.5071624,
+    "lng": 101.4451559,
+    "label": "Kota Pekanbaru"
+  },
+  "kota_tembilahan": {
+    "lat": 0.5071624,
+    "lng": 101.4451559,
+    "label": "Kota Tembilahan"
+  },
+  "kota_pematang_siantar": {
+    "lat": 2.9588631,
+    "lng": 99.0653646,
+    "label": "Kota Pematang Siantar"
+  },
+  "kab._polewali_mandar": {
+    "lat": -3.3031896,
+    "lng": 119.1450522,
+    "label": "Kab. Polewali Mandar"
+  },
+  "kota_pontianak": {
+    "lat": -0.0226903,
+    "lng": 109.3447488,
+    "label": "Kota Pontianak"
+  },
+  "kota_probolinggo": {
+    "lat": -7.7441461,
+    "lng": 113.2158401,
+    "label": "Kota Probolinggo"
+  },
+  "kota_samarinda": {
+    "lat": -0.5017804,
+    "lng": 117.1393089,
+    "label": "Kota Samarinda"
+  },
+  "kota_sampit": {
+    "lat": -2.5389113,
+    "lng": 112.949389,
+    "label": "Kota Sampit"
+  },
+  "kota_semarang": {
+    "lat": -6.9903988,
+    "lng": 110.4229104,
+    "label": "Kota Semarang"
+  },
+  "kota_serang": {
+    "lat": -6.1169662,
+    "lng": 106.1518079,
+    "label": "Kota Serang"
+  },
+  "kota_sibolga": {
+    "lat": 1.736957,
+    "lng": 98.78461,
+    "label": "Kota Sibolga"
+  },
+  "kota_singkawang": {
+    "lat": 0.9069861,
+    "lng": 108.9889657,
+    "label": "Kota Singkawang"
+  },
+  "kota_sorong": {
+    "lat": -0.8634105,
+    "lng": 131.2544805,
+    "label": "Kota Sorong"
+  },
+  "kab._sragen": {
+    "lat": -7.3924563,
+    "lng": 110.9530232,
+    "label": "Kab. Sragen"
+  },
+  "kota_sukabumi": {
+    "lat": -6.9199289,
+    "lng": 106.9265095,
+    "label": "Kota Sukabumi"
+  },
+  "kab._sukoharjo": {
+    "lat": -7.6814995,
+    "lng": 110.8700287,
+    "label": "Kab. Sukoharjo"
+  },
+  "kab._sumba_timur": {
+    "lat": -9.8342576,
+    "lng": 120.2094194,
+    "label": "Kab. Sumba Timur"
+  },
+  "kab._sumbawa": {
+    "lat": -9.4164554,
+    "lng": 124.4758485,
+    "label": "Kab. Sumbawa"
+  },
+  "kab._sumenep": {
+    "lat": -6.9991798,
+    "lng": 113.8376708,
+    "label": "Kab. Sumenep"
+  },
+  "kota_surabaya": {
+    "lat": -7.2462836,
+    "lng": 112.7377674,
+    "label": "Kota Surabaya"
+  },
+  "kota_surakarta_(solo)": {
+    "lat": -7.5815339,
+    "lng": 110.8218905,
+    "label": "Kota Surakarta (Solo)"
+  },
+  "kota_tangerang": {
+    "lat": -6.1761924,
+    "lng": 106.6382161,
+    "label": "Kota Tangerang"
+  },
+  "kota_tanjung": {
+    "lat": -2.1652925,
+    "lng": 115.383139,
+    "label": "Kota Tanjung"
+  },
+  "kota_tanjung_pandan": {
+    "lat": -2.7422808,
+    "lng": 107.6544753,
+    "label": "Kota Tanjung Pandan"
+  },
+  "kota_tanjung_pinang": {
+    "lat": 0.9236915,
+    "lng": 104.446094,
+    "label": "Kota Tanjung Pinang"
+  },
+  "kota_tarakan": {
+    "lat": 3.3000169,
+    "lng": 117.6330159,
+    "label": "Kota Tarakan"
+  },
+  "kota_tasikmalaya": {
+    "lat": -7.3262484,
+    "lng": 108.2201154,
+    "label": "Kota Tasikmalaya"
+  },
+  "kota_sumenep": {
+    "lat": -6.9991798,
+    "lng": 113.8376708,
+    "label": "Kota Sumenep"
+  },
+  "kota_ternate": {
+    "lat": 0.7852043,
+    "lng": 127.3832342,
+    "label": "Kota Ternate"
+  },
+  "kota_tual": {
+    "lat": -5.6389933,
+    "lng": 132.7429249,
+    "label": "Kota Tual"
+  },
+  "kota_watampone": {
+    "lat": -4.5386807,
+    "lng": 120.3276891,
+    "label": "Kota Watampone"
+  },
+  "kab._wonogiri": {
+    "lat": -7.9620507,
+    "lng": 110.9575733,
+    "label": "Kab. Wonogiri"
+  },
+  "kota_yogyakarta": {
+    "lat": -7.8012646,
+    "lng": 110.3646857,
+    "label": "Kota Yogyakarta"
+  }
+}
