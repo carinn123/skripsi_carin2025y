@@ -98,7 +98,9 @@ CITY_SLUG_TO_ENTITY = {
     "kupang": "kota_kupang",
     "ambon": "kota_ambon",
     "jayapura": "kota_jayapura",
-    "biak": "kab._biak_numfor",  # contoh kabupaten
+    "biak": "kab._biak_numfor",  
+    "bogor" : "kota_bogor",
+    # contoh kabupaten
 }
 
 # =======================
