@@ -1,0 +1,26 @@
+{
+  "mode": "delta_plus_lag1_blend",
+  "alpha_blend": 1.0,
+  "features": [
+    "lag_1",
+    "lag_7",
+    "rollmean_7",
+    "rollmean_14",
+    "month",
+    "dayofweek",
+    "time_index",
+    "is_end_of_year",
+    "is_new_year",
+    "is_eid_window",
+    "is_crisis_2021"
+  ],
+  "params": {
+    "learning_rate": 0.01,
+    "loss": "huber",
+    "max_depth": 1,
+    "min_samples_leaf": 3,
+    "n_estimators": 400,
+    "random_state": 42,
+    "subsample": 1.0
+  }
+}

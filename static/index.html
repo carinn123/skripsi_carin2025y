@@ -158,11 +158,76 @@
     <div class="input-section">
       <div class="input-row">
         <div class="input-group">
+           <label for="kabupaten">Pilih Kabupaten/Kota</label>
+            <select id="kabupaten">
+              <option value="">-- Pilih Kabupaten/Kota --</option>
+            </select>
+          </div>
+
+          <!-- (Opsional) kotak cari -->
+          <input id="search-kab" placeholder="Cari kota/kab..." style="margin-top:8px; width:100%;" />
+
+          <script>
+            function slugify(str) {
+              return String(str)
+                .toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+            }
+
+            function fillSelect(selectId, items) {
+              const sel = document.getElementById(selectId);
+              if (!sel) return;
+              sel.length = 1; // sisakan placeholder
+              const frag = document.createDocumentFragment();
+              for (const name of items) {
+                const opt = document.createElement('option');
+                opt.value = name;          // pakai label asli sebagai value
+                opt.textContent = name;
+                opt.dataset.label = name; // simpan label asli
+                frag.appendChild(opt);
+              }
+              sel.appendChild(frag);
+            }
+
+            async function initCities() {
+              try {
+                // jika pakai Flask static: path-nya '/static/cities.json'
+                const res = await fetch('/static/cities.json');
+                const data = await res.json();
+                fillSelect('kabupaten', data.cities || []);
+              } catch (e) {
+                console.error('Gagal memuat daftar kota:', e);
+              }
+            }
+
+            // filter sederhana untuk select panjang
+            function wireSearch() {
+              const search = document.getElementById('search-kab');
+              const sel = document.getElementById('kabupaten');
+              if (!search || !sel) return;
+              search.addEventListener('input', () => {
+                const q = search.value.toLowerCase();
+                for (const opt of sel.options) {
+                  if (!opt.value) continue; // skip placeholder
+                  const label = (opt.dataset.label || opt.textContent).toLowerCase();
+                  opt.hidden = !label.includes(q);
+                }
+                // opsi: kalau hasil ada, pilih yang pertama yg tidak hidden
+                // const first = Array.from(sel.options).find(o => !o.hidden && o.value);
+                // if (first) sel.value = first.value;
+              });
+            }
+
+            initCities();
+            wireSearch();
+          </script>
+        <!-- <div class="input-group">
           <label for="kabupaten">Pilih Kabupaten/Kota</label>
           <select id="kabupaten">
             <option value="">-- Pilih Kabupaten/Kota --</option>
             <option value="jakarta-pusat">Jakarta Pusat</option>
-            <option value="jakarta-selatan">Jakarta Selatan</option>
             <option value="bandung">Bandung</option>
             <option value="surabaya">Surabaya</option>
             <option value="medan">Medan</option>
@@ -181,7 +246,7 @@
             <option value="bogor">Kota Bogor</option>
 
           </select>
-        </div>
+        </div> -->
 
         <div class="input-group">
           <label for="tahun">Pilih Tahun</label>
@@ -335,10 +400,26 @@
   async function getProvGeoJSON() {
     if (__PROV_GJ) return __PROV_GJ;
     // pastikan file berada di: static/indonesia_provinces.geojson
-    const r = await fetch('/indonesia_provinces.geojson?v=1', { cache: 'no-store' });
+    const r = await fetch('/static/indonesia_provinces.geojson?v=1', { cache: 'no-store' });
     if (!r.ok) throw new Error('GeoJSON provinsi tidak ditemukan');
     __PROV_GJ = await r.json();
     return __PROV_GJ;
+  }
+  function getSelectedCityLabel() {
+    const sel = document.getElementById('kabupaten');
+    const opt = sel.options[sel.selectedIndex];
+    return opt?.dataset?.label || sel.value; // nama asli (label) -> fallback ke value
+  }
+
+  async function initCities() {
+    try {
+      const res = await fetch('/static/cities.json');
+      const data = await res.json();
+      fillSelect('kabupaten', data.cities || []);
+      wireSearch(); // boleh panggil di sini
+    } catch (e) {
+      console.error('Gagal memuat daftar kota:', e);
+    }
   }
 
   // =================== BERANDA: PETA CHOROPLETH ===================
@@ -441,6 +522,8 @@
     }
   }
 
+  
+
   // =================== TINJAUAN TREN (by city) ===================
   let trendChart = null;
 
@@ -485,48 +568,49 @@
     else { trendChart = new Chart(ctx, { type:'line', data:chartData, options }); }
   }
 
-  async function loadData(){
-    const kabupaten = document.getElementById('kabupaten').value;
-    const tahun     = document.getElementById('tahun').value;
-    const bulan     = document.getElementById('bulan').value;
-    const minggu    = document.getElementById('minggu').value;
-    const loading   = document.getElementById('loadingSpinner');
+  async function loadData() {
+    const cityLabel = getSelectedCityLabel();   // gunakan label asli
+    const tahun  = document.getElementById('tahun').value;
+    const bulan  = document.getElementById('bulan').value;
+    const minggu = document.getElementById('minggu').value;
+    const loading = document.getElementById('loadingSpinner');
 
-    if(!kabupaten || !tahun){ alert('Silakan pilih kabupaten/kota dan tahun terlebih dahulu!'); return; }
+    if (!cityLabel || !tahun) {
+      alert('Silakan pilih kabupaten/kota dan tahun terlebih dahulu!');
+      return;
+    }
 
     loading.style.display = 'inline-block';
-    try{
-      const url = `/api/trend?city=${encodeURIComponent(kabupaten)}&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}`;
+    try {
+      const url = `/api/trend?city=${encodeURIComponent(cityLabel)}&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}`;
       const res = await fetch(url);
       const trend = await res.json();
-      if(!res.ok) throw new Error(trend.error || 'Server error');
+      if (!res.ok) throw new Error(trend.error || 'Server error');
 
       const s = trend.stats || {};
-      const fmt = n => (n==null||Number.isNaN(n))? "-" : rupiah(Math.round(n));
+      const fmt = n => (n == null || Number.isNaN(n)) ? "-" : rupiah(Math.round(n));
       document.getElementById('hargaMin').textContent  = fmt(s.min);
       document.getElementById('hargaMax').textContent  = fmt(s.max);
       document.getElementById('hargaRata').textContent = fmt(s.mean);
-      document.getElementById('volatilitas').textContent = (s.vol_pct==null? "-" : s.vol_pct.toFixed(2));
+      document.getElementById('volatilitas').textContent = (s.vol_pct == null ? "-" : s.vol_pct.toFixed(2));
 
-      let scope = `Tahun ${tahun}`;
-      if (bulan) scope = `Bulan ${bulan} ${tahun}`;
-      if (bulan && minggu) scope = `Minggu ke-${minggu}, Bulan ${bulan} ${tahun}`;
-      const title = `Tren Harga • ${kabupaten.replace('-', ' ').toUpperCase()} • ${scope}`;
+      const scope = bulan && minggu ? `Minggu ke-${minggu}, Bulan ${bulan} ${tahun}` :
+                    bulan ? `Bulan ${bulan} ${tahun}` : `Tahun ${tahun}`;
+      const title = `Tren Harga • ${cityLabel.toUpperCase()} • ${scope}`;
 
       renderTrendChart(trend.series || [], trend.granularity, title);
 
       document.getElementById('analisisTren').textContent =
-        `Analisis ${scope}: n=${s.n||0}, rata-rata Rp ${fmt(s.mean)}, rentang Rp ${fmt(s.min)}–Rp ${fmt(s.max)}, volatilitas ${(s.vol_pct==null? "-" : s.vol_pct.toFixed(2))}%.`;
+        `Analisis ${scope}: n=${s.n || 0}, rata-rata Rp ${fmt(s.mean)}, rentang Rp ${fmt(s.min)}–Rp ${fmt(s.max)}, volatilitas ${(s.vol_pct == null ? "-" : s.vol_pct.toFixed(2))}%.`;
 
       document.querySelector('[data-section="tren"]').click();
-    }catch(e){
+    } catch (e) {
       console.error(e);
       alert('Gagal memuat tren: ' + e.message);
-    }finally{
+    } finally {
       loading.style.display = 'none';
     }
-  }
-
+}
   // =================== PREDIKSI (by city) ===================
   let predChart = null;
 
@@ -562,16 +646,16 @@
   }
 
   async function loadPrediksi() {
-    const city = document.getElementById('kabupaten').value;
+    const cityLabel = getSelectedCityLabel();
     const start = document.getElementById('startDate').value;
     const end   = document.getElementById('endDate').value;
     const placeholder = document.getElementById('predPlaceholder');
 
-    if (!city)  { alert('Pilih kabupaten/kota dulu.'); return; }
+    if (!cityLabel)  { alert('Pilih kabupaten/kota dulu.'); return; }
     if (!start || !end) { alert('Tanggal mulai & akhir wajib diisi.'); return; }
 
     try {
-      const url = `/api/predict_range?city=${encodeURIComponent(city)}&start=${start}&end=${end}`;
+      const url = `/api/predict_range?city=${encodeURIComponent(cityLabel)}&start=${start}&end=${end}`;
       const res = await fetch(url);
       const js = await res.json();
       if (!res.ok) throw new Error(js.error || 'Server error');

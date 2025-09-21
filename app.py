@@ -1,5 +1,5 @@
 # app.py
-import os, json, warnings
+import os, json, warnings, re
 from pathlib import Path
 from datetime import datetime
 import numpy as np
@@ -106,7 +106,7 @@ CITY_SLUG_TO_ENTITY = {
 # =======================
 # FLASK APP
 # =======================
-app = Flask(__name__, static_folder="static", static_url_path="")
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
 
 # =======================
@@ -269,19 +269,66 @@ if missing_coords:
 # =======================
 _MODEL_CACHE = {}  # entity -> { model, feature_cols, config, metrics, smear, mode, transform }
 
-def _slug_to_entity(slug: str) -> str:
-    slug = slug.strip().lower()
+
+def _normalize_to_slug(text: str) -> str:
+    text = (text or "").strip().lower()
+    text =  re.sub(r'^(kota administrasi|kota|kab\.?|kabupaten)\s+', '', text)
+    # ganti non-alnum jadi '-'
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+    return text.strip('-')
+
+# def _slug_to_entity(slug: str) -> str:
+#     slug = _normalize_to_slug(slug)   # <-- baris penting
+#     if slug in CITY_SLUG_TO_ENTITY:
+#         return CITY_SLUG_TO_ENTITY[slug]
+#     cand = f"kota_{slug.replace('-', '_')}"
+#     if cand in ENTITIES: return cand
+#     cand = f"kab._{slug.replace('-', '_')}"
+#     if cand in ENTITIES: return cand
+#     raise ValueError(
+#         f"Mapping slug '{slug}' ke entity tidak ditemukan. "
+#         f"Tambahkan di CITY_SLUG_TO_ENTITY atau samakan nama kolom Excel-nya."
+#     )
+
+def _slug_to_entity(s: str) -> str:
+    """
+    Terima: entity (kota_*/kab._*), label ('Kota Banjarmasin'), atau slug ('banjarmasin').
+    Balikkan: entity yang ada di ENTITIES.
+    """
+    s0 = (s or "").strip()
+    s_lower = s0.lower()
+
+    # 0) kalau sudah entity persis di dataset
+    if s_lower in ENTITIES:
+        return s_lower
+
+    # 1) normalisasi ke slug
+    slug = _normalize_to_slug(s0)
+
+    # 2) cek override manual (boleh kosong / sebagian)
     if slug in CITY_SLUG_TO_ENTITY:
-        return CITY_SLUG_TO_ENTITY[slug]
-    # fallback heuristik: kota_..., kab._...
+        ent = CITY_SLUG_TO_ENTITY[slug]
+        if ent in ENTITIES:
+            return ent
+
+    # 3) heuristik cocok nama kolom dataset
     cand = f"kota_{slug.replace('-', '_')}"
     if cand in ENTITIES:
         return cand
     cand = f"kab._{slug.replace('-', '_')}"
     if cand in ENTITIES:
         return cand
-    raise ValueError(f"Mapping slug '{slug}' ke entity tidak ditemukan. Tambahkan di CITY_SLUG_TO_ENTITY atau samakan nama kolom Excel-nya.")
 
+    # 4) cocokkan dengan label di CITY_COORDS
+    for ent, meta in CITY_COORDS.items():
+        label = (meta.get("label") or ent)
+        if _normalize_to_slug(label) == slug and ent in ENTITIES:
+            return ent
+
+    raise ValueError(
+        f"Mapping untuk '{s}' tidak ditemukan. "
+        f"Pastikan label ada di city_coords.json atau sesuaikan nama kolom Excel."
+    )
 def _load_model_for_entity(entity: str):
     """Load artefak model .joblib dan hitung smearing (jika level+log)."""
     if entity in _MODEL_CACHE:
@@ -295,6 +342,8 @@ def _load_model_for_entity(entity: str):
     model = pack["model"]
     feature_cols = pack["feature_cols"]
     best_cfg = pack.get("best_config", {"mode": "level", "transform": "none", "train_until": None})
+    alpha = float(best_cfg.get("alpha_blend", 1.0))
+
     metrics = pack.get("metrics", {})
 
     dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["entity","date","value"]].copy()
@@ -334,6 +383,8 @@ def _load_model_for_entity(entity: str):
         "smear": smear,
         "mode": mode,
         "transform": transform,
+        "alpha": alpha,  # <--- tambahkan ini
+
     }
     print(f">> Loaded model for {entity} | smear={smear:.6f} | mode={mode}/{transform}")
     return _MODEL_CACHE[entity]
@@ -349,6 +400,8 @@ def _one_step_predict_series(entity: str) -> pd.DataFrame:
     mode = bundle["mode"]
     transform = bundle["transform"]
     smear = bundle["smear"]
+    alpha = bundle.get("alpha", 1.0)  # <--- baru
+
 
     dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["entity","date","value"]].copy()
     df_feat, _ = make_features_entity(dfe, horizon=1)
@@ -357,12 +410,11 @@ def _one_step_predict_series(entity: str) -> pd.DataFrame:
     if mode == "level":
         yhat_level = np.exp(yhat_tr) * smear if transform == "log" else yhat_tr
     else:
-        yhat_level = df_feat["value"].values + yhat_tr
+        yhat_level = df_feat["value"].values + (alpha * yhat_tr)  # <--- pakai alpha
 
     dates = (df_feat["date"] + pd.Timedelta(days=1)).dt.normalize()
     out = pd.DataFrame({"date": dates, "pred": yhat_level})
     return out.sort_values("date").reset_index(drop=True)
-
 def _recursive_predict(entity: str, days: int):
     """Prediksi multi-step (berantai) -> skala LEVEL."""
     bundle = _load_model_for_entity(entity)
@@ -371,6 +423,7 @@ def _recursive_predict(entity: str, days: int):
     mode = bundle["mode"]
     transform = bundle["transform"]
     smear = bundle["smear"]
+    alpha = bundle.get("alpha", 1.0)  # ← ambil alpha_blend (default 1.0)
 
     dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["entity","date","value"]].copy()
     preds = []
@@ -381,26 +434,30 @@ def _recursive_predict(entity: str, days: int):
             raise RuntimeError("Fitur kosong saat inference.")
 
         x_last = df_feat.iloc[-1][feature_cols].values.reshape(1, -1)
-        last_date = df_feat.iloc[-1]["date"]
+        last_date  = df_feat.iloc[-1]["date"]
         last_value = dfe["value"].iloc[-1]
 
-        yhat_tr = model.predict(x_last)[0]
+        yhat_tr = float(model.predict(x_last)[0])
         if mode == "level":
             if transform == "log":
                 y_next_level = float(np.exp(yhat_tr) * smear)
             else:
                 y_next_level = float(yhat_tr)
         else:
-            y_next_level = float(last_value + yhat_tr)
+            # MODE 'diff' → y_t = y_{t-1} + alpha * Δ̂_t
+            delta_hat = alpha * yhat_tr
+            # optional clamp biar tidak ekstrem (sesuaikan kalau mau)
+            delta_hat = float(np.clip(delta_hat, -500, 500))
+            y_next_level = float(last_value + delta_hat)
 
         next_date = last_date + pd.Timedelta(days=1)
         preds.append({"date": next_date.date().isoformat(), "pred": round(y_next_level, 4)})
 
         # append untuk langkah berikutnya
-        dfe = pd.concat([
-            dfe,
-            pd.DataFrame([{"entity": entity, "date": next_date, "value": y_next_level}])
-        ], ignore_index=True)
+        dfe = pd.concat(
+            [dfe, pd.DataFrame([{"entity": entity, "date": next_date, "value": y_next_level}])],
+            ignore_index=True
+        )
 
     return preds
 
@@ -421,9 +478,43 @@ def api_islands():
     islands = ["Semua Pulau","Jawa","Sumatra","Kalimantan","Sulawesi","Bali–NT","Maluku","Papua"]
     return jsonify(islands)
 
+@app.route("/api/cities_full")
+def api_cities_full():
+    """
+    Daftar kota dari CITY_COORDS / ENTITIES:
+    [{entity, slug, label}]
+    """
+    out = []
+    source = CITY_COORDS if CITY_COORDS else {e: {} for e in ENTITIES}
+    for ent in sorted(source.keys()):
+        meta  = CITY_COORDS.get(ent, {})
+        label = meta.get("label") or ent.replace("_", " ").title().replace("Kab. ", "Kabupaten ")
+        slug  = _normalize_to_slug(label)
+        out.append({"entity": ent, "slug": slug, "label": label})
+    # urutkan berdasarkan label
+    out.sort(key=lambda x: x["label"].lower())
+    return jsonify(out)
+
 @app.route("/api/cities")
 def api_cities():
-    return jsonify(sorted(list(CITY_SLUG_TO_ENTITY.keys())))
+    """
+    Untuk kompatibilitas lama: kembalikan list label saja (diambil dari CITY_COORDS).
+    Saran: gunakan /api/cities_full di FE.
+    """
+    if CITY_COORDS:
+        labels = []
+        for ent, meta in CITY_COORDS.items():
+            label = meta.get("label") or ent.replace("_", " ").title()
+            labels.append(label)
+        labels = sorted(set(labels), key=lambda x: x.lower())
+        return jsonify(labels)
+    # fallback: generate dari ENTITIES
+    labels = []
+    for ent in ENTITIES:
+        labels.append(ent.replace("_", " ").title())
+    labels = sorted(set(labels), key=lambda x: x.lower())
+    return jsonify(labels)
+
 
 @app.route("/api/history")
 def api_history():
