@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Prediksi Harga Minyak Goreng Indonesia</title>
+
+  <!-- Font (opsional, untuk heading yang lebih tegas) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&display=swap" rel="stylesheet">
+
+  <!-- Leaflet & Chart.js -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- CSS kamu -->
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+  <!-- ====== COVER / HERO ====== -->
+  <section class="hero" id="cover">
+    <div class="hero-wrap">
+      <div class="badge"><i></i> PrediksiMinyak.id</div>
+      <h1>Empowering Decisions<br>with <span style="color:var(--green)">Digital Forecast</span></h1>
+      <p>Sistem prediksi harga minyak goreng berbasis <strong>Gradient Boosting</strong> dengan tampilan peta interaktif, analisis tren, dan evaluasi performa model.</p>
+    </div>
+    <div class="hero-floating">
+      <button class="btn-telusuri" id="scroll-to-beranda">Telusuri <span class="chev">↓</span></button>
+    </div>
+  </section>
+
+  <!-- ====== NAV ====== -->
+  <div class="container">
+    <header>
+      <nav>
+        <div class="logo">🛢️ PrediksiMinyak.id</div>
+        <ul class="nav-links">
+          <li><a href="#" class="nav-link active" data-section="beranda">Beranda</a></li>
+          <li><a href="#" class="nav-link" data-section="tren">Tinjauan Tren</a></li>
+          <li><a href="#" class="nav-link" data-section="prediksi">Prediksi</a></li>
+          <li><a href="#" class="nav-link" data-section="evaluasi">Evaluasi</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <!-- ====== BERANDA (MAP) ====== -->
+    <div class="content-section active" id="beranda">
+      <h2 class="section-title">Selamat Datang di Sistem Prediksi Harga Minyak Goreng</h2>
+
+      <div class="input-section" id="beranda-filter">
+        <div class="input-row">
+          <div class="input-group">
+            <label for="pulau">Pilih Pulau</label>
+            <select id="pulau"><option value="">-- Pilih Pulau --</option></select>
+          </div>
+          <div class="input-group">
+            <label for="b_tahun">Pilih Tahun</label>
+            <select id="b_tahun">
+              <option value="">-- Pilih Tahun --</option>
+              <option>2020</option><option>2021</option><option>2022</option>
+              <option>2023</option><option>2024</option><option>2025</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="b_bulan">Pilih Bulan (opsional)</label>
+            <select id="b_bulan">
+              <option value="">— Semua Bulan —</option>
+              <option value="1">Januari</option><option value="2">Februari</option>
+              <option value="3">Maret</option><option value="4">April</option>
+              <option value="5">Mei</option><option value="6">Juni</option>
+              <option value="7">Juli</option><option value="8">Agustus</option>
+              <option value="9">September</option><option value="10">Oktober</option>
+              <option value="11">November</option><option value="12">Desember</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="b_minggu">Minggu ke- (opsional)</label>
+            <select id="b_minggu" disabled>
+              <option value="">— Semua Minggu —</option>
+              <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <button class="btn" onclick="showMapBeranda()">Tampilkan <span class="loading" id="b_loading" style="display:none;"></span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <h3>Tentang Sistem</h3>
+        <p>…</p>
+      </div>
+
+      <div id="map"></div>
+      <div class="legend">
+        <span><i style="background:#2ecc71"></i> Rendah</span>
+        <span><i style="background:#f1c40f"></i> Sedang</span>
+        <span><i style="background:#e74c3c"></i> Tinggi</span>
+      </div>
+
+      <div class="stats-grid" style="margin-top:1rem">
+        <div class="stat-card"><div class="stat-value" id="statPulau">-</div><div class="stat-label">Pulau</div></div>
+        <div class="stat-card"><div class="stat-value" id="statScope">-</div><div class="stat-label">Periode</div></div>
+        <div class="stat-card"><div class="stat-value" id="statLast">-</div><div class="stat-label">Last Actual</div></div>
+      </div>
+    </div>
+
+    <!-- ====== INPUT GLOBAL ====== -->
+    <div class="input-section">
+      <div class="input-row">
+        <div class="input-group" style="flex:2">
+          <label for="kabupaten">Pilih Kabupaten/Kota</label>
+          <select id="kabupaten"><option value="">-- Pilih Kabupaten/Kota --</option></select>
+          <input id="search-kab" placeholder="Cari kota/kab..." style="margin-top:8px;width:100%"/>
+        </div>
+        <div class="input-group">
+          <label for="tahun">Pilih Tahun</label>
+          <select id="tahun">
+            <option value="">-- Pilih Tahun --</option>
+            <option>2020</option><option>2021</option><option>2022</option>
+            <option>2023</option><option>2024</option><option>2025</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="bulan">Pilih Bulan (opsional)</label>
+          <select id="bulan">
+            <option value="">— Semua Bulan (analisis tahunan) —</option>
+            <option value="1">Januari</option><option value="2">Februari</option><option value="3">Maret</option>
+            <option value="4">April</option><option value="5">Mei</option><option value="6">Juni</option>
+            <option value="7">Juli</option><option value="8">Agustus</option><option value="9">September</option>
+            <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="minggu">Minggu ke- (opsional)</label>
+          <select id="minggu" disabled>
+            <option value="">— Semua Minggu (analisis bulanan) —</option>
+            <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <button class="btn" onclick="loadData()">Analisis Data <span class="loading" id="loadingSpinner" style="display:none;"></span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== TREN ====== -->
+    <div class="content-section" id="tren">
+      <h2 class="section-title">Tinjauan Tren Harga Minyak Goreng</h2>
+      <div class="chart-container">
+        <canvas id="trendChart"></canvas>
+        <div class="chart-placeholder" id="trendPlaceholder">📈 Grafik Tren Harga …</div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-value" id="hargaMin">-</div><div class="stat-label">Harga Terendah (Rp/L)</div></div>
+        <div class="stat-card"><div class="stat-value" id="hargaMax">-</div><div class="stat-label">Harga Tertinggi (Rp/L)</div></div>
+        <div class="stat-card"><div class="stat-value" id="hargaRata">-</div><div class="stat-label">Harga Rata-rata (Rp/L)</div></div>
+        <div class="stat-card"><div class="stat-value" id="volatilitas">-</div><div class="stat-label">Volatilitas (%)</div></div>
+      </div>
+      <div class="info-box"><h3>Analisis Pola Harga</h3><p id="analisisTren">Pilih data untuk melihat analisis …</p></div>
+    </div>
+
+    <!-- ====== PREDIKSI ====== -->
+    <div class="content-section" id="prediksi">
+      <h2 class="section-title">Prediksi Harga Minyak Goreng</h2>
+      <div class="input-row" style="margin-bottom:.8rem">
+        <div class="input-group"><label for="startDate">Pilih Tanggal Mulai</label><input type="date" id="startDate"></div>
+        <div class="input-group"><label for="endDate">Pilih Tanggal Akhir</label><input type="date" id="endDate"></div>
+        <div class="input-group"><button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button></div>
+      </div>
+      <div class="chart-container">
+        <canvas id="predChart"></canvas>
+        <div class="chart-placeholder" id="predPlaceholder">🔮 Pilih kab/kota …</div>
+      </div>
+    </div>
+
+    <!-- ====== EVALUASI ====== -->
+    <div class="content-section" id="evaluasi">
+      <h2 class="section-title">Evaluasi Model & Performance</h2>
+      <div class="chart-container"><div class="chart-placeholder">📊 Grafik Evaluasi …</div></div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-value" id="mseValue">-</div><div class="stat-label">MSE</div></div>
+        <div class="stat-card"><div class="stat-value" id="mapeValue">-</div><div class="stat-label">MAPE (%)</div></div>
+        <div class="stat-card"><div class="stat-value" id="r2Value">-</div><div class="stat-label">R² Score</div></div>
+        <div class="stat-card"><div class="stat-value" id="performanceGrade">-</div><div class="stat-label">Grade Model</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS kamu -->
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
