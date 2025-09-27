@@ -98,7 +98,12 @@ CITY_SLUG_TO_ENTITY = {
 # =======================
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
 
+# Kurangi cache static agar cepat terlihat perubahan saat dev
+from datetime import timedelta
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(seconds=0)
 # =======================
 # UTIL DATA
 # =======================
@@ -412,11 +417,13 @@ def _recursive_predict(entity: str, days: int):
 # ROUTES
 # =======================
 MONTH_NAMES = {1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"Mei",6:"Jun",7:"Jul",8:"Agu",9:"Sep",10:"Okt",11:"Nov",12:"Des"}
-
+from flask import make_response
+INDEX_HTML = "index.html"
 @app.route("/")
 def index():
-    return render_template("index.html")
-
+    resp = make_response(send_from_directory("static", INDEX_HTML))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return resp
 @app.route("/api/islands")
 def api_islands():
     return jsonify(["Semua Pulau","Jawa","Sumatra","Kalimantan","Sulawesi","Bali–NT","Maluku","Papua"])
@@ -838,6 +845,42 @@ def api_reload():
     CITY_COORDS        = _safe_load_json(CITY_COORDS_PATH, {})
     LAST_ACTUAL = _compute_last_actual_dates(str(DATA_PATH))
     return jsonify({"ok": True, "entities": sorted(list(ENTITIES)), "rows": int(len(LONG_DF))})
+
+@app.route("/api/trend_compare")
+def api_trend_compare():
+    # ?city_a=...&city_b=...&year=2024[&month=&week=]
+    a = (request.args.get("city_a") or "").strip().lower()
+    b = (request.args.get("city_b") or "").strip().lower()
+    year = request.args.get("year","").strip()
+    month = request.args.get("month","").strip()
+    week = request.args.get("week","").strip()
+    if not a or not b or not year: return jsonify({"error":"param city_a, city_b, year wajib"}), 400
+
+    def call(city):
+        with app.test_request_context(
+            f"/api/trend?city={city}&year={year}&month={month}&week={week}"
+        ):
+            return api_trend().json
+
+    return jsonify({"a": call(a), "b": call(b)})
+
+@app.route("/api/predict_compare")
+def api_predict_compare():
+    # ?city_a=...&city_b=...&start=YYYY-MM-DD&end=YYYY-MM-DD
+    a = (request.args.get("city_a") or "").strip().lower()
+    b = (request.args.get("city_b") or "").strip().lower()
+    start = request.args.get("start","").strip()
+    end   = request.args.get("end","").strip()
+    if not a or not b or not start or not end: 
+        return jsonify({"error":"param city_a, city_b, start, end wajib"}), 400
+
+    def call(city):
+        with app.test_request_context(
+            f"/api/predict_range?city={city}&start={start}&end={end}&naive_fallback=1"
+        ):
+            return api_predict_range().json
+
+    return jsonify({"a": call(a), "b": call(b)})
 
 # =======================
 # MAIN

@@ -6,7 +6,7 @@
   <title>Prediksi Harga Minyak Goreng Indonesia</title>
 
   <!-- Styles (pakai cache buster) -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=2">
+  <link rel="stylesheet" href="/static/app.css?v=3">
 
   <!-- Library eksternal -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -14,7 +14,20 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- App JS -->
-  <script src="{{ url_for('static', filename='app.js') }}?v=2" defer></script>
+  <script src="/static/app.js?v=3" defer></script>
+
+  <style>
+    /* Tambahan kecil agar topbar rapi tanpa mengubah app.css besar-besaran */
+    .topbar { position: sticky; top: 0; z-index: 999; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+    .topbar .wrap { max-width: 1200px; margin: 0 auto; padding: .8rem 1rem; display:flex; align-items:center; gap:1rem; }
+    .brand-inline { font-weight:700; white-space:nowrap; }
+    .top-nav { display:flex; gap:.5rem; flex-wrap:wrap; }
+    .top-nav .nav-link { display:inline-block; padding:.5rem .75rem; border-radius:.5rem; text-decoration:none; color:#333; font-weight:600; }
+    .top-nav .nav-link.active { background: var(--soft); color: var(--green, #1abc9c); }
+
+    /* Hilangkan padding-left yang mungkin berasal dari layout sidebar lama */
+    .main { padding-left: 0 !important; }
+  </style>
 </head>
 <body>
 
@@ -30,103 +43,109 @@
     </div>
   </section>
 
-  <!-- ====== APP SHELL: SIDEBAR + MAIN ====== -->
-  <div class="app-shell">
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <div class="brand">🛢️ PrediksiMinyak.id</div>
-      <nav class="side-nav">
+  <!-- ====== TOP BAR (pengganti sidebar) ====== -->
+  <header class="topbar">
+    <div class="wrap">
+      <div class="brand-inline">🛢️ PrediksiMinyak.id</div>
+      <nav class="top-nav">
         <a href="#" class="nav-link active" data-section="beranda">🏠 Beranda</a>
         <a href="#" class="nav-link" data-section="tren">📈 Tinjauan Tren</a>
         <a href="#" class="nav-link" data-section="prediksi">🔮 Prediksi</a>
         <a href="#" class="nav-link" data-section="evaluasi">🧪 Evaluasi</a>
       </nav>
-    </aside>
+    </div>
+  </header>
 
-    <!-- Konten -->
-    <main class="main">
-      <!-- tombol burger (mobile) -->
-      <button class="menu-btn" id="menuBtn">☰</button>
+  <!-- ====== KONTEN ====== -->
+  <main class="main">
+    <div class="container">
 
-      <div class="container">
+      <!-- ====== BERANDA ====== -->
+      <div class="content-section active" id="beranda">
+        <h2 class="section-title">Selamat Datang di Sistem Prediksi Harga Minyak Goreng</h2>
 
-        <!-- ====== BERANDA ====== -->
-        <div class="content-section active" id="beranda">
-          <h2 class="section-title">Selamat Datang di Sistem Prediksi Harga Minyak Goreng</h2>
-
-          <div class="input-section" id="beranda-filter">
-            <div class="input-row">
-              <div class="input-group">
-                <label for="pulau">Pilih Pulau</label>
-                <select id="pulau"><option value="">-- Pilih Pulau --</option></select>
-              </div>
-              <div class="input-group">
-                <label for="b_tahun">Pilih Tahun</label>
-                <select id="b_tahun">
-                  <option value="">-- Pilih Tahun --</option>
-                  <option value="2020">2020</option><option value="2021">2021</option>
-                  <option value="2022">2022</option><option value="2023">2023</option>
-                  <option value="2024">2024</option><option value="2025">2025</option>
-                </select>
-              </div>
-              <div class="input-group">
-                <label for="b_bulan">Pilih Bulan (opsional)</label>
-                <select id="b_bulan">
-                  <option value="">— Semua Bulan —</option>
-                  <option value="1">Januari</option><option value="2">Februari</option>
-                  <option value="3">Maret</option><option value="4">April</option>
-                  <option value="5">Mei</option><option value="6">Juni</option>
-                  <option value="7">Juli</option><option value="8">Agustus</option>
-                  <option value="9">September</option><option value="10">Oktober</option>
-                  <option value="11">November</option><option value="12">Desember</option>
-                </select>
-              </div>
-              <div class="input-group">
-                <label for="b_minggu">Minggu ke- (opsional)</label>
-                <select id="b_minggu" disabled>
-                  <option value="">— Semua Minggu —</option>
-                  <option value="1">1</option><option value="2">2</option>
-                  <option value="3">3</option><option value="4">4</option><option value="5">5</option>
-                </select>
-              </div>
-              <div class="input-group">
-                <button class="btn" onclick="showMapBeranda()">Tampilkan
-                  <span class="loading" id="b_loading" style="display:none;"></span>
-                </button>
-              </div>
+        <div class="input-section" id="beranda-filter">
+          <div class="input-row">
+            <div class="input-group">
+              <label for="pulau">Pilih Pulau</label>
+              <select id="pulau"><option value="">-- Pilih Pulau --</option></select>
             </div>
-          </div>
-
-          <div class="info-box">
-            <h3>Tentang Sistem</h3>
-            <p>Sistem ini menggunakan <strong>Gradient Boosting</strong> untuk memprediksi harga minyak goreng berdasarkan data historis PIHPS. Di bawah ini adalah <strong>peta harga rata-rata per provinsi</strong> dengan kategori warna:
-              <span style="color:#2ecc71;font-weight:600;">Hijau</span> (rendah),
-              <span style="color:#f1c40f;font-weight:600;">Kuning</span> (sedang),
-              <span style="color:#e74c3c;font-weight:600;">Merah</span> (tinggi).
-            </p>
-          </div>
-
-          <div id="map"></div>
-          <div class="legend">
-            <span><i style="background:#2ecc71"></i> Rendah</span>
-            <span><i style="background:#f1c40f"></i> Sedang</span>
-            <span><i style="background:#e74c3c"></i> Tinggi</span>
-          </div>
-
-          <div class="stats-grid" style="margin-top:1rem">
-            <div class="stat-card"><div class="stat-value" id="statPulau">-</div><div class="stat-label">Pulau</div></div>
-            <div class="stat-card"><div class="stat-value" id="statScope">-</div><div class="stat-label">Periode</div></div>
-            <div class="stat-card"><div class="stat-value" id="statLast">-</div><div class="stat-label">Last Actual</div></div>
+            <div class="input-group">
+              <label for="b_tahun">Pilih Tahun</label>
+              <select id="b_tahun">
+                <option value="">-- Pilih Tahun --</option>
+                <option value="2020">2020</option><option value="2021">2021</option>
+                <option value="2022">2022</option><option value="2023">2023</option>
+                <option value="2024">2024</option><option value="2025">2025</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label for="b_bulan">Pilih Bulan (opsional)</label>
+              <select id="b_bulan">
+                <option value="">— Semua Bulan —</option>
+                <option value="1">Januari</option><option value="2">Februari</option>
+                <option value="3">Maret</option><option value="4">April</option>
+                <option value="5">Mei</option><option value="6">Juni</option>
+                <option value="7">Juli</option><option value="8">Agustus</option>
+                <option value="9">September</option><option value="10">Oktober</option>
+                <option value="11">November</option><option value="12">Desember</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label for="b_minggu">Minggu ke- (opsional)</label>
+              <select id="b_minggu" disabled>
+                <option value="">— Semua Minggu —</option>
+                <option value="1">1</option><option value="2">2</option>
+                <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <button class="btn" onclick="showMapBeranda()">Tampilkan
+                <span class="loading" id="b_loading" style="display:none;"></span>
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- ====== INPUT GLOBAL (kota/kab) ====== -->
+        <div class="info-box">
+          <h3>Tentang Sistem</h3>
+          <p>Sistem ini menggunakan <strong>Gradient Boosting</strong> untuk memprediksi harga minyak goreng berdasarkan data historis PIHPS. Di bawah ini adalah <strong>peta harga rata-rata per provinsi</strong> dengan kategori warna:
+            <span style="color:#2ecc71;font-weight:600;">Hijau</span> (rendah),
+            <span style="color:#f1c40f;font-weight:600;">Kuning</span> (sedang),
+            <span style="color:#e74c3c;font-weight:600;">Merah</span> (tinggi).
+          </p>
+        </div>
+
+        <div id="map"></div>
+        <div class="legend">
+          <span><i style="background:#2ecc71"></i> Rendah</span>
+          <span><i style="background:#f1c40f"></i> Sedang</span>
+          <span><i style="background:#e74c3c"></i> Tinggi</span>
+        </div>
+
+        <div class="stats-grid" style="margin-top:1rem">
+          <div class="stat-card"><div class="stat-value" id="statPulau">-</div><div class="stat-label">Pulau</div></div>
+          <div class="stat-card"><div class="stat-value" id="statScope">-</div><div class="stat-label">Periode</div></div>
+          <div class="stat-card"><div class="stat-value" id="statLast">-</div><div class="stat-label">Last Actual</div></div>
+        </div>
+      </div>
+
+      <!-- ====== TINJAUAN TREN ====== -->
+      <div class="content-section" id="tren">
+        <h2 class="section-title">Tinjauan Tren Harga Minyak Goreng</h2>
+
+        <!-- (dipindah dari global) INPUT untuk analisis Tren & Prediksi -->
         <div class="input-section">
           <div class="input-row">
             <div class="input-group" style="flex:2">
-              <label for="kabupaten">Pilih Kabupaten/Kota</label>
+              <label for="kabupaten">Kab/Kota 1</label>
               <select id="kabupaten"><option value="">-- Pilih Kabupaten/Kota --</option></select>
-              <input id="search-kab" placeholder="Cari kota/kab..." style="margin-top:8px;width:100%"/>
+              <!-- <input id="F-kab" placeholder="Cari kota/kab..." style="margin-top:8px;width:100%"/> -->
+            </div>
+              <div class="input-group" style="flex:2">
+              <label for="kabupaten2">Kab/Kota 2</label>
+              <select id="kabupaten2"><option value="">-- Pilih Kabupaten/Kota --</option></select>
+              <!-- <input id="search-kab" placeholder="Cari kota/kab..." style="margin-top:8px;width:100%"/> -->
             </div>
             <div class="input-group">
               <label for="tahun">Pilih Tahun</label>
@@ -165,73 +184,82 @@
           </div>
         </div>
 
-        <!-- ====== TINJAUAN TREN ====== -->
-        <div class="content-section" id="tren">
-          <h2 class="section-title">Tinjauan Tren Harga Minyak Goreng</h2>
-          <div class="chart-container">
-            <canvas id="trendChart"></canvas>
-            <div class="chart-placeholder" id="trendPlaceholder">
-              📈 Grafik Tren Harga akan ditampilkan di sini<br>
-              <small>Silakan pilih kabupaten/kota & tahun, lalu Analisis Data</small>
-            </div>
-          </div>
-
-          <div class="stats-grid">
-            <div class="stat-card"><div class="stat-value" id="hargaMin">-</div><div class="stat-label">Harga Terendah (Rp/L)</div></div>
-            <div class="stat-card"><div class="stat-value" id="hargaMax">-</div><div class="stat-label">Harga Tertinggi (Rp/L)</div></div>
-            <div class="stat-card"><div class="stat-value" id="hargaRata">-</div><div class="stat-label">Harga Rata-rata (Rp/L)</div></div>
-            <div class="stat-card"><div class="stat-value" id="volatilitas">-</div><div class="stat-label">Volatilitas (%)</div></div>
-          </div>
-
-          <div class="info-box">
-            <h3>Analisis Pola Harga</h3>
-            <p id="analisisTren">Pilih data untuk melihat analisis pola harga dan tren.</p>
+        <div class="chart-container">
+          <canvas id="trendChart"></canvas>
+          <div class="chart-placeholder" id="trendPlaceholder">
+            📈 Grafik Tren Harga akan ditampilkan di sini<br>
+            <small>Silakan pilih kabupaten/kota & tahun, lalu Analisis Data</small>
           </div>
         </div>
 
-        <!-- ====== PREDIKSI ====== -->
-        <div class="content-section" id="prediksi">
-          <h2 class="section-title">Prediksi Harga Minyak Goreng</h2>
-
-          <div class="input-row" style="margin-bottom:.8rem">
-            <div class="input-group">
-              <label for="startDate">Pilih Tanggal Mulai</label>
-              <input type="date" id="startDate">
-            </div>
-            <div class="input-group">
-              <label for="endDate">Pilih Tanggal Akhir</label>
-              <input type="date" id="endDate">
-            </div>
-            <div class="input-group">
-              <button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button>
-            </div>
-          </div>
-
-          <div class="chart-container">
-            <canvas id="predChart"></canvas>
-            <div class="chart-placeholder" id="predPlaceholder">
-              🔮 Pilih kabupaten/kota (di atas), lalu pilih tanggal mulai & akhir, kemudian klik <b>Lihat Prediksi</b>.
-            </div>
-          </div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-value" id="hargaMin">-</div><div class="stat-label">Harga Terendah (Rp/L)</div></div>
+          <div class="stat-card"><div class="stat-value" id="hargaMax">-</div><div class="stat-label">Harga Tertinggi (Rp/L)</div></div>
+          <div class="stat-card"><div class="stat-value" id="hargaRata">-</div><div class="stat-label">Harga Rata-rata (Rp/L)</div></div>
+          <div class="stat-card"><div class="stat-value" id="volatilitas">-</div><div class="stat-label">Volatilitas (%)</div></div>
         </div>
 
-        <!-- ====== EVALUASI ====== -->
-        <div class="content-section" id="evaluasi">
-          <h2 class="section-title">Evaluasi Model & Performance</h2>
-          <div class="chart-container"><div class="chart-placeholder">📊 Grafik Evaluasi Model akan ditampilkan di sini</div></div>
-          <div class="stats-grid">
-            <div class="stat-card"><div class="stat-value" id="mseValue">-</div><div class="stat-label">MSE</div></div>
-            <div class="stat-card"><div class="stat-value" id="mapeValue">-</div><div class="stat-label">MAPE (%)</div></div>
-            <div class="stat-card"><div class="stat-value" id="r2Value">-</div><div class="stat-label">R² Score</div></div>
-            <div class="stat-card"><div class="stat-value" id="performanceGrade">-</div><div class="stat-label">Grade Model</div></div>
-          </div>
+        <div class="info-box">
+          <h3>Analisis Pola Harga</h3>
+          <p id="analisisTren">Pilih data untuk melihat analisis pola harga dan tren.</p>
         </div>
-
       </div>
-    </main>
-  </div>
 
-  <!-- backdrop utk mobile drawer -->
-  <div class="backdrop" id="backdrop"></div>
+      <!-- ====== PREDIKSI ====== -->
+      <!-- ====== PREDIKSI ====== -->
+    <div class="content-section" id="prediksi">
+      <h2 class="section-title">Prediksi Harga Minyak Goreng</h2>
+
+      <!-- Pemilihan 2 Kota untuk perbandingan -->
+      <div class="input-section">
+        <div class="input-row">
+          <div class="input-group" style="flex:2">
+            <label for="kabupaten_a">Kota/Kab 1</label>
+            <select id="kabupaten_a"><option value="">-- Pilih Kabupaten/Kota --</option></select>
+          </div>
+          <div class="input-group" style="flex:2">
+            <label for="kabupaten_b">Kota/Kab 2</label>
+            <select id="kabupaten_b"><option value="">-- Pilih Kabupaten/Kota --</option></select>
+          </div>
+          <div class="input-group">
+            <label for="startDate">Tanggal Mulai</label>
+            <input type="date" id="startDate">
+          </div>
+          <div class="input-group">
+            <label for="endDate">Tanggal Akhir</label>
+            <input type="date" id="endDate">
+          </div>
+          <div class="input-group">
+            <button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <canvas id="predChart"></canvas>
+        <div class="chart-placeholder" id="predPlaceholder">
+          🔮 Pilih dua kabupaten/kota, lalu pilih tanggal mulai & akhir, kemudian klik <b>Lihat Prediksi</b>.
+        </div>
+      </div>
+    </div>
+
+
+      <!-- ====== EVALUASI ====== -->
+      <div class="content-section" id="evaluasi">
+        <h2 class="section-title">Evaluasi Model & Performance</h2>
+        <div class="chart-container"><div class="chart-placeholder">📊 Grafik Evaluasi Model akan ditampilkan di sini</div></div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-value" id="mseValue">-</div><div class="stat-label">MSE</div></div>
+          <div class="stat-card"><div class="stat-value" id="mapeValue">-</div><div class="stat-label">MAPE (%)</div></div>
+          <div class="stat-card"><div class="stat-value" id="r2Value">-</div><div class="stat-label">R² Score</div></div>
+          <div class="stat-card"><div class="stat-value" id="performanceGrade">-</div><div class="stat-label">Grade Model</div></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- backdrop (DIHAPUS karena tidak ada sidebar/drawer) -->
+  <!-- <div class="backdrop" id="backdrop"></div> -->
 </body>
 </html>
