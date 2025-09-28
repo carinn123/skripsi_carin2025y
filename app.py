@@ -7,6 +7,7 @@ import pandas as pd
 from flask import Flask, request, jsonify, send_from_directory, abort, render_template
 from flask_cors import CORS
 import joblib
+import math
 
 
 # =======================
@@ -19,6 +20,10 @@ MODELS_DIR  = BASE_DIR / "models"
 
 ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
 CITY_COORDS_PATH = BASE_DIR / "static" / "city_coords.json"
+EVAL_XLSX = BASE_DIR / "models" / "training_summary_all_cities.xlsx"
+
+# Cache evaluasi di memory
+_EVAL_CACHE = None
 
 
 FILL_METHOD = "ffill_bfill"  # atau "interpolate"
@@ -107,6 +112,7 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(seconds=0)
 # =======================
 # UTIL DATA
 # =======================
+
 def to_numeric_series(s: pd.Series) -> pd.Series:
     s = s.astype(str).str.strip()
     s = s.replace({"-": np.nan, "": np.nan})
@@ -219,6 +225,67 @@ def _basic_stats(arr: np.ndarray) -> dict:
         "vol_pct": float(np.std(arr, ddof=0) / np.mean(arr) * 100.0) if np.mean(arr) != 0 else None
     }
 
+
+def _slugify_city(name: str) -> str:
+    s = (name or "").strip().lower()
+    # anggap spasi atau '-' sama-sama dipetakan ke underscore
+    s = re.sub(r"[\s\-]+", "_", s)
+    s = re.sub(r"[^\w_]", "", s)
+    return s
+
+def _load_eval_metrics():
+    """Baca Excel evaluasi (Kota, MAE, RMSE, MAPE, R2) -> dict per slug kota."""
+    global _EVAL_CACHE
+    if _EVAL_CACHE is not None:
+        return _EVAL_CACHE
+
+    p = EVAL_XLSX
+    if not p.exists():
+        _EVAL_CACHE = {}
+        return _EVAL_CACHE
+
+    df = pd.read_excel(p)
+
+    # Toleransi variasi nama kolom
+    col_map = {c.lower(): c for c in df.columns}
+    col_kota  = col_map.get("kota") or col_map.get("city") or col_map.get("kab/kota") or col_map.get("kabupaten/kota")
+    col_mae   = col_map.get("mae")
+    col_rmse  = col_map.get("rmse")
+    col_mape  = col_map.get("mape")
+    col_r2    = col_map.get("r2") or col_map.get("r²") or col_map.get("r2 score")
+
+    if not col_kota:
+        # minimal perlu identitas kota
+        _EVAL_CACHE = {}
+        return _EVAL_CACHE
+
+    data = {}
+    for _, row in df.iterrows():
+        label = str(row[col_kota]).strip()
+        if not label:
+            continue
+        slug = _slugify_city(label)
+
+        mae  = float(row[col_mae])  if col_mae  in df.columns and not pd.isna(row[col_mae])  else None
+        rmse = float(row[col_rmse]) if col_rmse in df.columns and not pd.isna(row[col_rmse]) else None
+        mape = float(row[col_mape]) if col_mape in df.columns and not pd.isna(row[col_mape]) else None
+        r2   = float(row[col_r2])   if col_r2   in df.columns and not pd.isna(row[col_r2])   else None
+
+        mse = None
+        if rmse is not None and not math.isnan(rmse):
+            mse = rmse * rmse
+
+        data[slug] = {
+            "label": label,
+            "mae": mae,
+            "mape": mape,
+            "mse": mse,
+            "rmse": rmse,
+            "r2": r2,
+        }
+
+    _EVAL_CACHE = data
+    return _EVAL_CACHE
 # =======================
 # LOAD DATA SEKALI
 # =======================
@@ -881,6 +948,54 @@ def api_predict_compare():
             return api_predict_range().json
 
     return jsonify({"a": call(a), "b": call(b)})
+
+def _candidates_for_eval_slug(s: str):
+    """Given 'banyuwangi', return plausible eval keys we may have stored from Excel."""
+    base = _slugify_city(s)                 # 'banyuwangi' or already like 'kab_banyuwangi'
+    # If user already passed kab_/kota_ keep it; else try common prefixes
+    cands = {base}
+    if not base.startswith(("kab_", "kota_", "kota_administrasi_")):
+        cands.update({
+            f"kab_{base}",
+            f"kota_{base}",
+            f"kota_administrasi_{base}",
+        })
+    # Also accept the dotted entity variant that can appear on the model side
+    cands.add(f"kab._{base}")
+    return list(cands)
+
+@app.route("/api/eval_summary")
+def api_eval_summary():
+    """
+    Ambil evaluasi dari Excel untuk satu kota (slug/label longgar):
+    /api/eval_summary?city=<slug_or_label>
+    """
+    q = (request.args.get("city", "") or "").strip()
+    if not q:
+        return jsonify({"error": "parameter 'city' wajib"}), 400
+
+    data = _load_eval_metrics()
+    if not data:
+        return jsonify({"error": "file evaluasi tidak ditemukan atau kosong"}), 404
+
+    # 1) try several slug candidates (plain, kab_, kota_, kota_administrasi_, dotted)
+    for key in _candidates_for_eval_slug(q):
+        rec = data.get(key)
+        if rec:
+            return jsonify({"ok": True, "city": rec["label"], "slug": key, "metrics": rec})
+
+    # 2) fallback: exact label match (case-insensitive, ignoring dots/hyphens)
+    q_norm = re.sub(r"[.\-]", " ", q.lower()).strip()
+    for slug, val in data.items():
+        if re.sub(r"[.\-]", " ", val["label"].lower()).strip() == q_norm:
+            return jsonify({"ok": True, "city": val["label"], "slug": slug, "metrics": val})
+
+    # 3) soft fallback: contains match (useful when label is 'Kab. Banyuwangi')
+    for slug, val in data.items():
+        if q_norm in val["label"].lower():
+            return jsonify({"ok": True, "city": val["label"], "slug": slug, "metrics": val})
+
+    return jsonify({"error": f"Evaluasi untuk kota '{q}' tidak ditemukan di Excel"}), 404
 
 # =======================
 # MAIN
