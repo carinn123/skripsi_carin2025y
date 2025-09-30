@@ -21,6 +21,7 @@ MODELS_DIR  = BASE_DIR / "models"
 ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
 CITY_COORDS_PATH = BASE_DIR / "static" / "city_coords.json"
 EVAL_XLSX = BASE_DIR / "models" / "training_summary_all_cities.xlsx"
+TOPN_XLSX = BASE_DIR / "data" / "topn_per_tahun_per_kota.xlsx"
 
 # Cache evaluasi di memory
 _EVAL_CACHE = None
@@ -480,6 +481,74 @@ def _recursive_predict(entity: str, days: int):
         )
     return preds
 
+_TOPN_CACHE = {"mtime": None, "df": None}
+def _parse_id_number(x):
+    """
+    Terima string angka gaya ID ('12,392' atau '19.400' atau '12 650'),
+    buang pemisah ribuan, lalu parse ke float.
+    """
+    if pd.isna(x): return np.nan
+    s = str(x).strip()
+    # buang semua non-digit/non-minus/non-dot
+    # (koma/dot/spasi sebagai pemisah ribuan akan hilang)
+    import re
+    s = re.sub(r"[^\d\.\-]", "", s)
+    # kalau masih ada lebih dari satu titik (kasus ribuan '.'), buang semua titik:
+    if s.count(".") > 1:
+        s = s.replace(".", "")
+    # jika formatnya cuma ribuan '19.400' (satu titik), ini juga harus jadi 19400
+    # heuristik: kalau setelah titik sisa 3 digit → buang titik
+    if s.count(".") == 1:
+        left, right = s.split(".")
+        if len(right) == 3 and right.isdigit():
+            s = left + right
+    try:
+        return float(s)
+    except:
+        return np.nan
+def _load_topn_df():
+    """
+    Baca hanya Sheet1 dari Excel topn_per_tahun_per_kota.xlsx
+    Kolom minimal: year, province (boleh kosong), city, avg, min, max, n
+    """
+    if not TOPN_XLSX.exists():
+        raise FileNotFoundError(f"File TopN tidak ditemukan: {TOPN_XLSX}")
+
+    mtime = TOPN_XLSX.stat().st_mtime
+    if _TOPN_CACHE["df"] is not None and _TOPN_CACHE["mtime"] == mtime:
+        return _TOPN_CACHE["df"]
+
+    # Pakai sheet pertama saja
+    df = pd.read_excel(TOPN_XLSX, sheet_name=0)
+
+    # Normalisasi nama kolom (lowercase, strip)
+    colmap = {c.lower().strip(): c for c in df.columns}
+    col_year = colmap.get("year") or colmap.get("tahun")
+    col_city = colmap.get("city") or colmap.get("city_label") or colmap.get("kota") or colmap.get("kab/kota") or colmap.get("kabupaten/kota")
+    col_prov = colmap.get("province") or colmap.get("provinsi")
+    col_avg  = colmap.get("avg") or colmap.get("rata") or colmap.get("rata2") or colmap.get("mean")
+    col_min  = colmap.get("min")
+    col_max  = colmap.get("max")
+    col_n    = colmap.get("n")   or colmap.get("count") or colmap.get("jumlah")
+
+    required = [col_year, col_city, col_avg]
+    if any(c is None for c in required):
+        raise ValueError("Sheet1 wajib punya kolom: year, city, avg (province/min/max/n opsional).")
+
+    out = pd.DataFrame({
+        "year":     pd.to_numeric(df[col_year], errors="coerce"),
+        "city":     df[col_city].astype(str),
+        "province": df[col_prov].astype(str) if col_prov else "",
+        "avg":      df[col_avg].apply(_parse_id_number),
+        "min":      df[col_min].apply(_parse_id_number) if col_min else np.nan,
+        "max":      df[col_max].apply(_parse_id_number) if col_max else np.nan,
+        "n":        pd.to_numeric(df[col_n], errors="coerce") if col_n else np.nan,
+    })
+
+    out = out.dropna(subset=["year", "city", "avg"]).copy()
+    out["year"] = out["year"].astype(int)
+    _TOPN_CACHE.update({"mtime": mtime, "df": out})
+    return out
 # =======================
 # ROUTES
 # =======================
@@ -997,6 +1066,71 @@ def api_eval_summary():
 
     return jsonify({"error": f"Evaluasi untuk kota '{q}' tidak ditemukan di Excel"}), 404
 
+# --- REPLACE endpoint lama /api/top5_cities dengan endpoint baru ini ---
+@app.route("/api/top_cities")
+def api_top_cities():
+    """
+    Ambil Top-N dari Excel ringkasan:
+      /api/top_cities?year=2024&order=desc&limit=5
+        - year  : wajib (angka)
+        - order : 'desc' (tertinggi) atau 'asc' (terendah). Default: desc
+        - limit : jumlah baris (default 5). Bisa > jumlah data tersedia.
+    """
+    year_s  = (request.args.get("year") or "").strip()
+    order   = (request.args.get("order") or "desc").strip().lower()
+    limit_s = (request.args.get("limit") or "5").strip()
+
+    if not year_s:
+        return jsonify({"error": "parameter year wajib"}), 400
+    try:
+        year = int(year_s)
+    except:
+        return jsonify({"error": "parameter year harus angka"}), 400
+
+    try:
+        limit = int(limit_s)
+        if limit <= 0: limit = 5
+    except:
+        limit = 5
+
+    asc = (order == "asc")
+
+    try:
+        df = _load_topn_df()
+    except Exception as e:
+        return jsonify({"error": f"Gagal membaca Excel TopN: {e}"}), 500
+
+    sub = df[df["year"] == year].copy()
+    if sub.empty:
+        return jsonify({"year": year, "order": order, "limit": limit, "data": []})
+
+    sub = sub.sort_values("avg", ascending=asc)
+    # hitung rank (1..n) sesuai urutan
+    sub["rank"] = range(1, len(sub) + 1)
+    if limit:
+        sub = sub.head(limit)
+
+    # formatting output
+    out = []
+    for r in sub.itertuples(index=False):
+        out.append({
+            "rank": int(r.rank),
+            "city": r.city,
+            "province": r.province,
+            "avg": None if pd.isna(r.avg) else float(r.avg),
+            "min": None if pd.isna(r.min) else float(r.min),
+            "max": None if pd.isna(r.max) else float(r.max),
+            "n":   None if pd.isna(r.n)   else int(r.n),
+        })
+
+    return jsonify({
+        "year": year,
+        "order": order,
+        "limit": limit,
+        "count": len(out),
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "data": out
+    })
 # =======================
 # MAIN
 # =======================

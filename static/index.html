@@ -128,6 +128,68 @@
           <div class="stat-card"><div class="stat-value" id="statScope">-</div><div class="stat-label">Periode</div></div>
           <div class="stat-card"><div class="stat-value" id="statLast">-</div><div class="stat-label">Last Actual</div></div>
         </div>
+        <!-- ====== TOP 5 KAB/KOTA (BERANDA) ====== -->
+        <section class="card-section" id="beranda-top5">
+  <h2 class="section-title">Top N Rata-rata Harga per Kab/Kota</h2>
+
+  <div class="input-section">
+    <div class="input-row">
+      <div class="input-group" style="min-width:180px;">
+        <label for="b_top_order">Urutan</label>
+        <select id="b_top_order">
+          <option value="desc">Tertinggi</option>
+          <option value="asc">Terendah</option>
+        </select>
+      </div>
+
+      <div class="input-group" style="min-width:180px;">
+        <label for="b_top_tahun">Tahun</label>
+        <select id="b_top_tahun">
+          <option value="">-- Pilih Tahun --</option>
+          <option value="2020">2020</option><option value="2021">2021</option>
+          <option value="2022">2022</option><option value="2023">2023</option>
+          <option value="2024">2024</option><option value="2025">2025</option>
+        </select>
+      </div>
+
+      <div class="input-group" style="min-width:160px;">
+        <label for="b_top_limit">Jumlah (Top-N)</label>
+        <input id="b_top_limit" type="number" min="1" max="200" value="5" />
+      </div>
+
+      <div class="input-group" style="align-self:flex-end;">
+        <button class="btn" id="btnTop5">
+          Tampilkan
+          <span class="loading" id="top5_loading" style="display:none;"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <table class="nice-table" id="top5Table">
+      <thead>
+        <tr>
+          <th style="width:52px">#</th>
+          <th>Kabupaten/Kota</th>
+          <th>Provinsi</th>
+          <th style="text-align:right">Rata-rata (Rp/L)</th>
+          <th style="text-align:right">Min</th>
+          <th style="text-align:right">Max</th>
+          <th style="text-align:right">n</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td colspan="7" style="text-align:center;color:var(--muted)">
+            Pilih tahun lalu klik <b>Tampilkan</b>.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
       </div>
 
       <!-- ====== TINJAUAN TREN ====== -->

@@ -176,6 +176,25 @@ async function showMapBeranda(){
 }
 window.showMapBeranda = showMapBeranda;
 
+
+// NAV (toggle section) — keep this one
+document.querySelectorAll('.nav-link').forEach(link=>{
+  link.addEventListener('click', e=>{
+    e.preventDefault();
+    document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
+    document.querySelectorAll('.content-section').forEach(s=>s.classList.remove('active'));
+    link.classList.add('active');
+    document.getElementById(link.getAttribute('data-section')).classList.add('active');
+  });
+});
+
+// Scroll tombol Telusuri — keep this one
+document.getElementById('scroll-to-beranda')
+  ?.addEventListener('click', ()=>{
+    document.querySelector('.nav-link[data-section="beranda"]')?.click();
+    document.getElementById('beranda')?.scrollIntoView({behavior:'smooth'});
+  });
+
 // ===== TINJAUAN TREN (single & compare)
 let trendChart=null;
 function renderTrendChart(series,granularity,title){
@@ -697,3 +716,198 @@ function renderEvaluasiChart(labels, actualAvg, predAvg, title){
 
 // boot
 initCities();
+/* =========================================================
+   FUTURISTIC UI ENHANCEMENTS (append-only; non-breaking)
+   ========================================================= */
+
+/* 0) Smooth nav switch (kode lama kamu sudah handle active state) */
+document.querySelectorAll('.nav-link').forEach(link=>{
+  link.addEventListener('click',e=>{
+    e.preventDefault();
+    document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
+    document.querySelectorAll('.content-section').forEach(s=>s.classList.remove('active'));
+    link.classList.add('active');
+    document.getElementById(link.getAttribute('data-section')).classList.add('active');
+  });
+});
+
+/* 1) Animated ink underline for nav */
+(function navInk(){
+  const nav = document.querySelector('.top-nav');
+  if (!nav) return;
+  let ink = nav.querySelector('.ink');
+  if (!ink){
+    ink = document.createElement('span');
+    ink.className = 'ink';
+    nav.appendChild(ink);
+  }
+  const moveInk = (el)=>{
+    const rect = el.getBoundingClientRect();
+    const parent = nav.getBoundingClientRect();
+    ink.style.width = rect.width + 'px';
+    ink.style.left  = (rect.left - parent.left) + 'px';
+  };
+  const active = nav.querySelector('.nav-link.active') || nav.querySelector('.nav-link');
+  if (active) moveInk(active);
+  nav.addEventListener('click', (e)=>{
+    const a = e.target.closest('.nav-link');
+    if (!a) return;
+    requestAnimationFrame(()=> moveInk(a));
+  });
+  window.addEventListener('resize', ()=>{
+    const current = nav.querySelector('.nav-link.active');
+    if (current) moveInk(current);
+  });
+})();
+
+/* 2) Auto Lite Mode (ringankan animasi di device low-spec / prefers-reduced-motion) */
+(function enableLiteMode(){
+  try{
+    const dm = navigator.deviceMemory || 0;
+    const cores = navigator.hardwareConcurrency || 0;
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const lowMem = dm && dm <= 4;
+    const lowCore = cores && cores <= 4;
+    if (prefersReduced || lowMem || lowCore){
+      document.documentElement.classList.add('lite');
+    }
+  }catch(_){}
+})();
+
+/* 3) Scroll Reveal (lean) */
+(function scrollRevealLean(){
+  if (!('IntersectionObserver' in window)) {
+    document.querySelectorAll('.content-section,.chart-container,#map,.stat-card')
+      .forEach(el=> el.classList.add('is-visible'));
+    return;
+  }
+  const lite = document.documentElement.classList.contains('lite');
+  const observer = new IntersectionObserver((entries, obs)=>{
+    for (const ent of entries){
+      if (ent.isIntersecting){
+        ent.target.classList.add('is-visible');
+        obs.unobserve(ent.target);
+      }
+    }
+  }, { rootMargin: lite ? '0px 0px -20% 0px' : '0px 0px -10% 0px', threshold: 0.06 });
+
+  document.querySelectorAll('.content-section, .chart-container, #map')
+    .forEach(el=> observer.observe(el));
+})();
+
+/* 4) Parallax hero (disable on lite) */
+(function heroParallaxLite(){
+  const htmlLite = document.documentElement.classList.contains('lite');
+  const hero = document.querySelector('.hero');
+  if (!hero || htmlLite) return;
+  let ticking = false;
+  const onScroll = ()=>{
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(()=>{
+      const sy = window.scrollY || window.pageYOffset;
+      const t = Math.min(30, sy * 0.06);
+      hero.style.transform = `translateY(${t}px)`;
+      ticking = false;
+    });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+})();
+
+/* 5) Ripple ringan (disabled on lite) */
+(function rippleButtonsLite(){
+  const lite = document.documentElement.classList.contains('lite');
+  if (lite) return; // disable ripple in lite
+  document.querySelectorAll('.btn, .btn-telusuri').forEach(btn=>{
+    btn.classList.add('btn--ripple');
+    let t;
+    btn.addEventListener('pointerdown', (e)=>{
+      const rect = btn.getBoundingClientRect();
+      const rx = ((e.clientX - rect.left)/rect.width)*100;
+      const ry = ((e.clientY - rect.top)/rect.height)*100;
+      btn.style.setProperty('--rx', rx + '%');
+      btn.style.setProperty('--ry', ry + '%');
+      btn.classList.add('is-pressed');
+      clearTimeout(t);
+      t = setTimeout(()=> btn.classList.remove('is-pressed'), 180);
+    });
+  });
+})();
+
+/* 6) Chart.js default animation (respect lite) */
+(function chartDefaults(){
+  if (!window.Chart) return;
+  const lite = document.documentElement.classList.contains('lite');
+  Chart.defaults.animation.duration = lite ? 300 : 900;
+  Chart.defaults.animation.easing = 'easeOutQuart';
+  Chart.defaults.elements.line.tension = 0.25;
+  Chart.defaults.elements.point.radius = 0;
+})();
+
+/* 7) Scroll tombol Telusuri tetap bekerja */
+document.getElementById('scroll-to-beranda')
+  ?.addEventListener('click', ()=>{
+    document.querySelector('.nav-link[data-section="beranda"]')?.click();
+    document.getElementById('beranda')?.scrollIntoView({behavior:'smooth'});
+  });
+
+  // ================= TOP-N dari Excel =================
+function fmtID(x, dec=0){
+  if (x==null || Number.isNaN(x)) return '-';
+  return new Intl.NumberFormat('id-ID', {maximumFractionDigits: dec, minimumFractionDigits: dec}).format(x);
+}
+
+async function loadTopN(){
+  const tahun = document.getElementById('b_top_tahun')?.value || '';
+  const order = document.getElementById('b_top_order')?.value || 'desc';
+  const limit = document.getElementById('b_top_limit')?.value || '5';
+  const spinner = document.getElementById('top5_loading');
+  const tbody = document.querySelector('#top5Table tbody');
+  if (!tbody) return;
+
+  if (!tahun){
+    alert('Pilih tahun dulu.'); 
+    return;
+  }
+
+  spinner && (spinner.style.display = 'inline-block');
+  try{
+    const url = `/api/top_cities?year=${encodeURIComponent(tahun)}&order=${encodeURIComponent(order)}&limit=${encodeURIComponent(limit)}`;
+    const res = await fetch(url, {cache:'no-store'});
+    const js  = await res.json();
+    if (!res.ok) throw new Error(js.error || 'Server error');
+
+    // render table
+    const rows = js.data || [];
+    if (!rows.length){
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--muted)">Tidak ada data untuk tahun ${tahun}.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td style="text-align:center">${r.rank ?? ''}</td>
+        <td>${r.city || '-'}</td>
+        <td>${r.province || '-'}</td>
+        <td style="text-align:right">Rp ${fmtID(r.avg,0)}</td>
+        <td style="text-align:right">${r.min==null?'-':('Rp '+fmtID(r.min,0))}</td>
+        <td style="text-align:right">${r.max==null?'-':('Rp '+fmtID(r.max,0))}</td>
+        <td style="text-align:right">${r.n==null?'-':fmtID(r.n,0)}</td>
+      </tr>
+    `).join('');
+  }catch(e){
+    console.error(e);
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#b00020">Gagal memuat: ${e.message}</td></tr>`;
+  }finally{
+    spinner && (spinner.style.display = 'none');
+  }
+}
+
+// sinkron default tahun (opsional) & bind tombol
+document.addEventListener('DOMContentLoaded', ()=>{
+  const tMaster = document.getElementById('b_tahun');
+  const tTop    = document.getElementById('b_top_tahun');
+  if (tMaster && tTop && !tTop.value && tMaster.value){
+    tTop.value = tMaster.value;
+  }
+  document.getElementById('btnTop5')?.addEventListener('click', loadTopN);
+});
