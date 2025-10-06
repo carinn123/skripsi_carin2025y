@@ -188,6 +188,63 @@
       </tbody>
     </table>
   </div>
+        </section>
+        <section class="card-section" id="regional-correlation">
+  <h2 class="section-title">Eksplor Kab/Kota per Pulau atau Provinsi</h2>
+
+  <div class="input-section">
+    <div class="input-row">
+      <div class="input-group" style="min-width:200px;">
+        <label for="rc_mode">Mode</label>
+        <select id="rc_mode">
+          <option value="island">Per Pulau</option>
+          <option value="province">Per Provinsi</option>
+        </select>
+      </div>
+
+      <div class="input-group" style="min-width:260px;">
+        <label for="rc_value">Pilih Pulau / Provinsi</label>
+        <select id="rc_value">
+          <option value="">-- Pilih --</option>
+        </select>
+      </div>
+
+      <div class="input-group" style="align-self:flex-end;">
+        <button class="btn" id="rc_btn">
+          Tampilkan
+          <span class="loading" id="rc_loading" style="display:none;"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <table class="nice-table" id="rc_table">
+      <thead>
+        <tr>
+          <th style="width:56px">No</th>
+          <th>Kabupaten/Kota</th>
+          <th>Provinsi</th>
+          <th>Pulau</th>
+          <th class="num">Harga Terendah</th>
+          <th class="num">Tanggal Terendah</th>
+          <th class="num">Harga Tertinggi</th>
+          <th class="num">Tanggal Tertinggi</th>
+          <th class="num">Rata2 Bulan Tertinggi</th>
+          <th class="num">Periode</th>
+          <th class="num">Rata2 Bulan Terendah</th>
+          <th class="num">Periode</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td colspan="12" style="text-align:center;color:var(--muted)">
+            Pilih mode & nilai pada dropdown, lalu klik <b>Tampilkan</b>.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </section>
 
       </div>

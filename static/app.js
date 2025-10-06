@@ -9,12 +9,19 @@ document.querySelectorAll('.nav-link').forEach(link=>{
   });
 });
 
-// ===== Scroll tombol Telusuri =====
 document.getElementById('scroll-to-beranda')
   ?.addEventListener('click', ()=>{
+    // collapse hero supaya atas halaman tinggal navbar
+    document.body.classList.add('hero-collapsed');
+
+    // pindah ke tab Beranda & scroll halus
     document.querySelector('.nav-link[data-section="beranda"]')?.click();
-    document.getElementById('beranda')?.scrollIntoView({behavior:'smooth'});
+    document.getElementById('beranda')?.scrollIntoView({ behavior:'smooth', block:'start' });
+
+    // opsional: set hash supaya reload tetap tanpa hero
+    history.replaceState(null, '', '#beranda');
   });
+
 
 // ===== Utils =====
 const monthsID=["","Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -188,12 +195,7 @@ document.querySelectorAll('.nav-link').forEach(link=>{
   });
 });
 
-// Scroll tombol Telusuri — keep this one
-document.getElementById('scroll-to-beranda')
-  ?.addEventListener('click', ()=>{
-    document.querySelector('.nav-link[data-section="beranda"]')?.click();
-    document.getElementById('beranda')?.scrollIntoView({behavior:'smooth'});
-  });
+
 
 // ===== TINJAUAN TREN (single & compare)
 let trendChart=null;
@@ -504,6 +506,71 @@ async function fetchPredictRange(citySlug, startISO, endISO) {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+function _niceDate(idStr){
+  // idStr 'YYYY-MM-DD' -> 'DD MMM YYYY'
+  try{
+    const d = new Date(idStr+"T00:00:00");
+    const opt = {day:'2-digit', month:'short', year:'numeric'};
+    return d.toLocaleDateString('id-ID', opt);
+  }catch(_){ return idStr || '-'; }
+}
+
+function _statsFromSeries(labels, values){
+  // labels: ['YYYY-MM-DD', ...]
+  // values: [number|null,...] (prediksi atau aktual yang sudah di-mapped ke labels)
+  const pts = [];
+  for (let i=0;i<labels.length;i++){
+    const v = values[i];
+    if (v==null || Number.isNaN(v)) continue;
+    pts.push({date: labels[i], value: Number(v)});
+  }
+  if (pts.length===0) {
+    return { n:0, avg:null, min:null, min_date:null, max:null, max_date:null, start:null, end:null, change_pct:null };
+  }
+  const n = pts.length;
+  let sum=0, min=Infinity, max=-Infinity, min_date=null, max_date=null;
+  for(const p of pts){
+    sum += p.value;
+    if (p.value < min){ min = p.value; min_date = p.date; }
+    if (p.value > max){ max = p.value; max_date = p.date; }
+  }
+  const avg = sum / n;
+  const start = pts[0].value;
+  const end   = pts[pts.length-1].value;
+  const change_pct = (start===0? null : ((end-start)/start*100));
+  return { n, avg, min, min_date, max, max_date, start, end, change_pct };
+}
+
+function _renderPredSummary(labels, seriesPred){
+  const box = document.getElementById('predSummary');
+  if (!box) return;
+
+  const s = _statsFromSeries(labels, seriesPred);
+  console.log('pred-summary stats =', s);
+
+  if (s.n === 0){
+    box.style.display = 'none';
+    return;
+  }
+  // tampilkan paksa (hapus inline style)
+  box.style.removeProperty('display');
+
+  const fmt = n => (n==null || Number.isNaN(n))? '-' : 'Rp '+new Intl.NumberFormat('id-ID').format(Math.round(n));
+  const fmtPct = n => (n==null || Number.isNaN(n))? '-' : (n>=0? '+' : '') + n.toFixed(2) + '%';
+
+  document.getElementById('predMaxVal').textContent  = fmt(s.max);
+  document.getElementById('predMaxDate').textContent = s.max_date ? _niceDate(s.max_date) : '—';
+  document.getElementById('predMinVal').textContent  = fmt(s.min);
+  document.getElementById('predMinDate').textContent = s.min_date ? _niceDate(s.min_date) : '—';
+  document.getElementById('predAvgVal').textContent  = fmt(s.avg);
+  document.getElementById('predCount').textContent   = `n = ${s.n} hari`;
+  document.getElementById('predChangePct').textContent = fmtPct(s.change_pct);
+  document.getElementById('predChangeNote').textContent = (s.start!=null && s.end!=null)
+      ? `${fmt(s.start)} → ${fmt(s.end)}`
+      : '—';
+}
+
+
 let _predChart=null;
 function renderPredChart(labels, actual, predicted, cityLabel) {
   const canvas = document.getElementById('predChart'); if (!canvas) return;
@@ -527,8 +594,50 @@ function renderPredChart(labels, actual, predicted, cityLabel) {
     }
   });
 }
+function _renderPredSummary(labels, seriesPred){
+  const box = document.getElementById('predSummary');
+  if (!box) return;
+
+  const s = _statsFromSeries(labels, seriesPred);
+  console.log('pred-summary stats =', s);     // <- cek di console
+
+  if (s.n === 0) {
+    box.style.display = 'none';
+    return;
+  }
+
+  // tampilkan paksa: hapus inline style supaya class .stats-grid (display:grid) berlaku
+  box.style.removeProperty('display');        // << ganti dari `box.style.display = ''`
+  // … (lanjutan set isi kartu seperti sudah kamu tulis) …
+}
+
+function _renderPredSummaryFromAPI(predictedArray){
+  const labels = predictedArray.map(p => p.date);
+  const values = predictedArray.map(p => p.value ?? p.pred ?? null);
+  _renderPredSummary(labels, values);
+}
+function _renderPredSummaryFromServer(s){
+  const box = document.getElementById('predSummary');
+  if (!box) return;
+  box.style.removeProperty('display');
+
+  const fmt = n => (n==null)? '-' : 'Rp '+new Intl.NumberFormat('id-ID').format(Math.round(n));
+  const fmtPct = n => (n==null)? '-' : (n>=0? '+' : '') + Number(n).toFixed(2) + '%';
+
+  document.getElementById('predMaxVal').textContent  = fmt(s.max);
+  document.getElementById('predMaxDate').textContent = s.max_date || '—';
+  document.getElementById('predMinVal').textContent  = fmt(s.min);
+  document.getElementById('predMinDate').textContent = s.min_date || '—';
+  document.getElementById('predAvgVal').textContent  = fmt(s.avg);
+  document.getElementById('predCount').textContent   = `n = ${s.n||0} hari`;
+  document.getElementById('predChangePct').textContent = fmtPct(s.change_pct);
+  document.getElementById('predChangeNote').textContent =
+    (s.start!=null && s.end!=null) ? `${fmt(s.start)} → ${fmt(s.end)}` : '—';
+}
+
 async function loadPrediksi(){
-const sel = document.getElementById('kabupaten_a');
+  // fallback ke #kabupaten kalau #kabupaten_a tidak ada
+  const sel = document.getElementById('kabupaten_a') || document.getElementById('kabupaten');
   const citySlug = selectedSlugOrLabel(sel);
   const start = document.getElementById('startDate').value;
   const end   = document.getElementById('endDate').value;
@@ -543,7 +652,7 @@ const sel = document.getElementById('kabupaten_a');
     const r = await fetchPredictRange(citySlug, start, end);
     const labels = fullDateRange(start, end);
 
-    // r.actual & r.predicted format: [{date: 'YYYY-MM-DD', value: number}, ...]
+    // r.actual & r.predicted: [{date:'YYYY-MM-DD', value:number}, ...]
     const mapActual = new Map((r.actual || []).map(p => [p.date, p.value]));
     const mapPred   = new Map((r.predicted || []).map(p => [p.date, p.value]));
 
@@ -553,6 +662,20 @@ const sel = document.getElementById('kabupaten_a');
     const cityLabel = (r.entity || r.city || citySlug).replace(/_/g,' ');
     renderPredChart(labels, dsActual, dsPred, cityLabel);
 
+    // --- RINGKASAN ---
+    // 1) kalau server sudah kirim summary, pakai itu
+    if (r.summary && r.summary.predicted){
+      _renderPredSummaryFromServer(r.summary.predicted);
+    } else {
+      // 2) kalau mapping ke labels kosong/null semua, hitung langsung dari payload r.predicted
+      const nonNullCount = dsPred.filter(v => v != null && !Number.isNaN(v)).length;
+      if (nonNullCount === 0 && Array.isArray(r.predicted) && r.predicted.length){
+        _renderPredSummaryFromAPI(r.predicted);
+      } else {
+        _renderPredSummary(labels, dsPred);
+      }
+    }
+
     document.querySelector('.nav-link[data-section="prediksi"]')?.click();
   } catch (e) {
     console.error(e);
@@ -561,6 +684,7 @@ const sel = document.getElementById('kabupaten_a');
   }
 }
 window.loadPrediksi = loadPrediksi;
+
 
 async function loadEvaluasi(){
   const citySel = document.getElementById('ev_city');
@@ -845,11 +969,6 @@ document.querySelectorAll('.nav-link').forEach(link=>{
 })();
 
 /* 7) Scroll tombol Telusuri tetap bekerja */
-document.getElementById('scroll-to-beranda')
-  ?.addEventListener('click', ()=>{
-    document.querySelector('.nav-link[data-section="beranda"]')?.click();
-    document.getElementById('beranda')?.scrollIntoView({behavior:'smooth'});
-  });
 
   // ================= TOP-N dari Excel =================
 function fmtID(x, dec=0){
@@ -910,4 +1029,144 @@ document.addEventListener('DOMContentLoaded', ()=>{
     tTop.value = tMaster.value;
   }
   document.getElementById('btnTop5')?.addEventListener('click', loadTopN);
+});
+
+
+// ================= Regional Correlation (Pulau/Provinsi) =================
+document.addEventListener('DOMContentLoaded', () => {
+  const rcModeSel   = document.getElementById('rc_mode');    // 'island' | 'province'
+  const rcValueSel  = document.getElementById('rc_value');   // dropdown dinamis
+  const rcBtn       = document.getElementById('rc_btn');     // tombol Tampilkan (opsional untuk isi dropdown)
+  const rcSpinner   = document.getElementById('rc_loading');
+  const rcTableBody = document.querySelector('#rc_table tbody');
+
+  // kalau dropdown utamanya nggak ada, sudahi (view lain)
+  if (!rcModeSel || !rcValueSel) return;
+
+  // util kecil
+  const MONTHS_ID_SHORT = ["","Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+  const fmtIDnum = (x, dec = 0) =>
+    (x == null || Number.isNaN(x))
+      ? '-'
+      : new Intl.NumberFormat('id-ID', { maximumFractionDigits: dec, minimumFractionDigits: dec }).format(x);
+
+  const showSpin = (yes) => { if (rcSpinner) rcSpinner.style.display = yes ? 'inline-block' : 'none'; };
+  const rcRenderEmpty = (msg) => {
+    if (!rcTableBody) return;
+    rcTableBody.innerHTML = `
+      <tr>
+        <td colspan="12" style="text-align:center;color:var(--muted)">${msg || 'Tidak ada data.'}</td>
+      </tr>
+    `;
+  };
+  const rcPeriod = (m, y) => {
+    if (m == null || y == null) return '—';
+    const mm = Number(m) || 0, yy = Number(y) || 0;
+    if (!mm || !yy) return '—';
+    return `${MONTHS_ID_SHORT[mm] || mm}-${yy}`;
+  };
+  const rcDatePretty = (iso) => {
+    if (!iso) return '—';
+    try { return new Date(iso+"T00:00:00").toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}); }
+    catch { return iso; }
+  };
+
+  async function loadIslandsList() {
+    try {
+      const r = await fetch('/api/islands', { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      const arr = await r.json();
+      return (arr || []).filter(n => n && n.toLowerCase() !== 'semua pulau');
+    } catch {
+      return ["Jawa","Sumatra","Kalimantan","Sulawesi","Bali–NT","Maluku","Papua"];
+    }
+  }
+  async function loadProvincesList() {
+    try {
+      const r = await fetch('/api/provinces', { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      return await r.json();
+    } catch {
+      return [
+        "Aceh","Sumatera Utara","Sumatera Barat","Riau","Kepulauan Riau","Jambi",
+        "Sumatera Selatan","Kepulauan Bangka Belitung","Bengkulu","Lampung",
+        "Banten","DKI Jakarta","Jawa Barat","Jawa Tengah","DI Yogyakarta","Jawa Timur",
+        "Bali","Nusa Tenggara Barat","Nusa Tenggara Timur",
+        "Kalimantan Barat","Kalimantan Tengah","Kalimantan Selatan","Kalimantan Timur","Kalimantan Utara",
+        "Sulawesi Utara","Gorontalo","Sulawesi Tengah","Sulawesi Barat","Sulawesi Selatan","Sulawesi Tenggara",
+        "Maluku","Maluku Utara","Papua","Papua Barat","Papua Barat Daya","Papua Tengah","Papua Pegunungan","Papua Selatan"
+      ];
+    }
+  }
+
+  async function fillRcValueOptions() {
+    rcValueSel.innerHTML = '<option value="">-- Pilih --</option>';
+    const mode = rcModeSel.value; // 'island' | 'province'
+    const list = (mode === 'island') ? await loadIslandsList() : await loadProvincesList();
+    for (const name of list) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      rcValueSel.appendChild(opt);
+    }
+    // log kecil biar kelihatan
+    console.log('[RC] filled', mode, '=>', rcValueSel.options.length, 'opsi');
+  }
+
+  async function fetchRegionSummary(mode, value) {
+    const u = `/api/region_summary?mode=${encodeURIComponent(mode)}&value=${encodeURIComponent(value)}`;
+    const r = await fetch(u, { cache: 'no-store' });
+    if (!r.ok) {
+      const js = await r.json().catch(() => ({}));
+      throw new Error(js.error || 'Server error');
+    }
+    return r.json();
+  }
+
+  function renderRegionRows(rows) {
+    if (!rcTableBody) return;
+    if (!rows || !rows.length) {
+      rcRenderEmpty('Tidak ada data untuk pilihan ini.');
+      return;
+    }
+    rcTableBody.innerHTML = rows.map((r, i) => `
+      <tr>
+        <td style="text-align:center">${r.no ?? (i + 1)}</td>
+        <td>${r.city || '-'}</td>
+        <td>${r.province || '-'}</td>
+        <td>${r.island || '-'}</td>
+        <td class="num">Rp ${fmtIDnum(r.min_value, 0)}</td>
+        <td class="num dim">${rcDatePretty(r.min_date)}</td>
+        <td class="num">Rp ${fmtIDnum(r.max_value, 0)}</td>
+        <td class="num dim">${rcDatePretty(r.max_date)}</td>
+        <td class="num">Rp ${fmtIDnum(r.avg_month_high, 0)}</td>
+        <td class="num dim">${rcPeriod(r.avg_month_high_month, r.avg_month_high_year)}</td>
+        <td class="num">Rp ${fmtIDnum(r.avg_month_low, 0)}</td>
+        <td class="num dim">${rcPeriod(r.avg_month_low_month, r.avg_month_low_year)}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function runRegional() {
+    const mode  = rcModeSel.value || 'island';
+    const value = rcValueSel.value || '';
+    if (!value) { alert('Pilih nilai pada dropdown kedua.'); return; }
+    showSpin(true);
+    try {
+      const js = await fetchRegionSummary(mode, value);
+      renderRegionRows(js.rows || []);
+    } catch (e) {
+      console.error(e);
+      rcRenderEmpty(`Gagal memuat: ${e.message}`);
+    } finally {
+      showSpin(false);
+    }
+  }
+
+  // wiring
+  rcModeSel.addEventListener('change', fillRcValueOptions);
+  rcBtn && rcBtn.addEventListener('click', runRegional);
+
+  // init pertama kali (pasti dipanggil setelah DOM siap)
+  fillRcValueOptions();
 });

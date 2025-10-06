@@ -295,3 +295,56 @@ select:focus,input:focus{
 
 /* small tweak for number alignment */
 .nice-table td.num { text-align: right; }
+/* ====== Regional Correlation (tabel) ====== */
+#regional-correlation .table-card { margin-top: .5rem; }
+
+.nice-table th.num, .nice-table td.num { text-align: right; }
+.nice-table td.dim { color: var(--muted); font-size: .92em; }
+/* Collapse hero setelah user klik Telusuri */
+body.hero-collapsed .hero{
+  height:0 !important;
+  min-height:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+  border:0 !important;
+  opacity:0 !important;
+  overflow:hidden !important;
+  animation:none !important;   /* matikan animasi */
+}
+body.hero-collapsed .hero-floating{ display:none !important; }
+
+/* biar anchor scroll ga ketutup navbar sticky */
+html{ scroll-padding-top: 72px; }  /* sesuaikan tinggi topbar-mu */
+/* Ganti font label input jadi Inter (lebih formal) */
+.input-group label,
+label[for]{
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-weight: 600;          /* dari 800 → 600 biar nggak terlalu tebal */
+  letter-spacing: 0.1px;
+}
+
+/* Kalau mau fieldnya ikut Inter juga (opsional) */
+select, input, button{
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+/* ==== Font untuk tabel Top-N & Regional Correlation ==== */
+.table-card,
+.table-card .nice-table,
+.table-card .nice-table th,
+.table-card .nice-table td {
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif !important; /* atau IBM Plex Sans */
+  font-weight: 500;   /* isi tabel */
+}
+
+/* Header tabel sedikit lebih tegas */
+.table-card .nice-table thead th{
+  font-weight: 600;   /* formal, nggak setebal 800 */
+  letter-spacing: .1px;
+}
+
+/* (opsional) angka lebih rapi */
+.table-card .nice-table td.num,
+.table-card .nice-table th.num{
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}

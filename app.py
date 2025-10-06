@@ -22,6 +22,8 @@ ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
 CITY_COORDS_PATH = BASE_DIR / "static" / "city_coords.json"
 EVAL_XLSX = BASE_DIR / "models" / "training_summary_all_cities.xlsx"
 TOPN_XLSX = BASE_DIR / "data" / "topn_per_tahun_per_kota.xlsx"
+REGIONAL_XLSX = BASE_DIR / "data" / "regional_correlation_summary.xlsx"
+_REGION_CACHE = {"mtime": None, "df": None}
 
 # Cache evaluasi di memory
 _EVAL_CACHE = None
@@ -76,27 +78,27 @@ PROVINCE_TO_ISLAND = {
 # SLUG → ENTITY (opsional; sisanya heuristik)
 # =======================
 CITY_SLUG_TO_ENTITY = {
-    "banjarmasin": "kota_banjarmasin",
-    "jakarta-pusat": "kota_administrasi_jakarta_pusat",
-    "jakarta-selatan": "kota_administrasi_jakarta_selatan",
-    "jakarta-barat": "kota_administrasi_jakarta_barat",
-    "jakarta-timur": "kota_administrasi_jakarta_timur",
-    "jakarta-utara": "kota_administrasi_jakarta_utara",
-    "bandung": "kota_bandung",
-    "surabaya": "kota_surabaya",
-    "medan": "kota_medan",
-    "semarang": "kota_semarang",
-    "makassar": "kota_makassar",
-    "palembang": "kota_palembang",
-    "pontianak": "kota_pontianak",
-    "manado": "kota_manado",
-    "denpasar": "kota_denpasar",
-    "mataram": "kota_mataram",
-    "kupang": "kota_kupang",
-    "ambon": "kota_ambon",
-    "jayapura": "kota_jayapura",
-    "biak": "kab._biak_numfor",
-    "bogor": "kota_bogor",
+    # "banjarmasin": "kota_banjarmasin",
+    # "jakarta-pusat": "kota_administrasi_jakarta_pusat",
+    # "jakarta-selatan": "kota_administrasi_jakarta_selatan",
+    # "jakarta-barat": "kota_administrasi_jakarta_barat",
+    # "jakarta-timur": "kota_administrasi_jakarta_timur",
+    # "jakarta-utara": "kota_administrasi_jakarta_utara",
+    # "bandung": "kota_bandung",
+    # "surabaya": "kota_surabaya",
+    # "medan": "kota_medan",
+    # "semarang": "kota_semarang",
+    # "makassar": "kota_makassar",
+    # "palembang": "kota_palembang",
+    # "pontianak": "kota_pontianak",
+    # "manado": "kota_manado",
+    # "denpasar": "kota_denpasar",
+    # "mataram": "kota_mataram",
+    # "kupang": "kota_kupang",
+    # "ambon": "kota_ambon",
+    # "jayapura": "kota_jayapura",
+    # "biak": "kab._biak_numfor",
+    # "bogor": "kota_bogor",
 }
 
 # =======================
@@ -153,21 +155,24 @@ def build_wide_long(path_xlsx: str, fill_method: str):
     return wide, long_df
 
 def _compute_last_actual_dates(path_xlsx: str) -> dict:
-    """Cari last tanggal NON-NaN per kolom di file mentah (bukan hasil ffill)."""
+    """Cari last tanggal NON-NaN per kolom di file mentah (bukan hasil ffill penuh)."""
     raw = pd.read_excel(path_xlsx)
     date_col = raw.columns[0]
     raw[date_col] = pd.to_datetime(raw[date_col], dayfirst=True, errors="coerce")
     raw = raw.dropna(subset=[date_col]).sort_values(date_col)
     value_cols = raw.columns[1:]
 
+    cutoff = pd.Timestamp("2025-07-01")  # batas akhir data nyata
     last = {}
     for c in value_cols:
         ent = re.sub(r"\s+", "_", str(c).strip().lower())
-        s = to_numeric_series(raw[c])
+        s = pd.to_numeric(raw[c], errors="coerce")
         valid_dates = raw.loc[s.notna(), date_col]
+        valid_dates = valid_dates[valid_dates <= cutoff]  # pastikan tidak lewat Juli
         if not valid_dates.empty:
             last[ent] = valid_dates.max().normalize()
     return last
+
 
 def add_fourier(df: pd.DataFrame, date_col: str, periods, K=2, prefix="fyr"):
     t = (df[date_col] - df[date_col].min()).dt.days.astype(float)
@@ -175,6 +180,37 @@ def add_fourier(df: pd.DataFrame, date_col: str, periods, K=2, prefix="fyr"):
         for k in range(1, K+1):
             df[f"{prefix}_sin_P{P}_k{k}"] = np.sin(2*np.pi*k*t/P)
             df[f"{prefix}_cos_P{P}_k{k}"] = np.cos(2*np.pi*k*t/P)
+
+def _series_stats(list_of_dict):
+    """
+    list_of_dict: [{'date':'YYYY-MM-DD','value':float}, ...]
+    return: dict {n, avg, min, min_date, max, max_date, start, end, change_pct}
+    """
+    vals = [(pd.to_datetime(d['date']).date(), float(d['value'])) 
+            for d in list_of_dict if d.get('value') is not None]
+    if not vals:
+        return dict(n=0, avg=None, min=None, min_date=None,
+                    max=None, max_date=None, start=None, end=None, change_pct=None)
+
+    n = len(vals)
+    s = sum(v for _,v in vals)
+    avg = s / n
+    # urut tanggal untuk start-end & robust
+    vals_sorted = sorted(vals, key=lambda x: x[0])
+    start = vals_sorted[0][1]
+    end   = vals_sorted[-1][1]
+    min_date, min_val = min(vals, key=lambda x: x[1])
+    max_date, max_val = max(vals, key=lambda x: x[1])
+    change_pct = None if start == 0 else (end - start) / start * 100.0
+
+    return dict(
+        n=n, avg=avg,
+        min=min_val, min_date=min_date.isoformat(),
+        max=max_val, max_date=max_date.isoformat(),
+        start=start, end=end,
+        change_pct=change_pct
+    )
+
 
 def make_features_entity(dfe: pd.DataFrame, horizon=1):
     df = dfe.sort_values("date").copy()
@@ -441,44 +477,107 @@ def _one_step_predict_series(entity: str) -> pd.DataFrame:
     out = pd.DataFrame({"date": dates, "pred": yhat_level})
     return out.sort_values("date").reset_index(drop=True)
 
+
+def make_features_for_next(dfe: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """Bangun fitur utk prediksi step berikutnya (tanpa y_next/y_diff & tanpa drop last row)."""
+    df = dfe.sort_values("date").copy()
+
+    # Lags
+    for L in [1, 2, 3, 7, 14, 21, 30, 60, 90]:
+        df[f"lag_{L}"] = df["value"].shift(L)
+
+    # Rolling (pakai shift(1) supaya tidak leakage)
+    for W in [7, 14, 30]:
+        s = df["value"].shift(1).rolling(W, min_periods=3)
+        df[f"roll{W}_mean"]   = s.mean()
+        df[f"roll{W}_std"]    = s.std()
+        df[f"roll{W}_median"] = s.median()
+    for W in [30, 60, 90]:
+        s = df["value"].shift(1).rolling(W, min_periods=5)
+        df[f"roll{W}_min"] = s.min()
+        df[f"roll{W}_max"] = s.max()
+
+    # Diff (feature, bukan target)
+    df["diff1"] = df["value"].diff(1)
+    df["diff7"] = df["value"].diff(7)
+
+    # Kalender
+    df["dayofweek"]  = df["date"].dt.dayofweek
+    df["weekofyear"] = df["date"].dt.isocalendar().week.astype(int)
+    df["month"]      = df["date"].dt.month
+
+    # Fourier (musiman)
+    add_fourier(df, "date", periods=[7, 365.25], K=2, prefix="fyr")
+
+    # Ambil hanya kolom fitur yang memang dipakai model
+    # (biar konsisten dengan model yang tersimpan)
+    feature_cols = [
+        # contoh: sesuaikan dgn pack["feature_cols"]
+        # atau nanti ambil subset berdasarkan feature_cols dari model saat infer
+        "lag_1","lag_7","lag_14","roll7_mean","roll14_mean","dayofweek","month",
+        # tambahkan jika modelmu pakai kolom lain
+    ]
+
+    return df, feature_cols
+ 
 def _recursive_predict(entity: str, days: int):
-    """Prediksi multi-step (ke depan). Return list dict {date, pred}."""
     if days <= 0:
         return []
+
     b = _load_model_for_entity(entity)
-    model = b["model"]; feature_cols = b["feature_cols"]
-    mode = b["mode"]; transform = b["transform"]; smear = b["smear"]; alpha = b.get("alpha", 1.0)
+    model        = b["model"]
+    feature_cols = b["feature_cols"]      # dari joblib saat training
+    mode         = b["mode"]
+    transform    = b["transform"]
+    smear        = b["smear"]
+    alpha        = b.get("alpha", 1.0)
 
     dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["entity","date","value"]].copy()
+    dfe["date"] = pd.to_datetime(dfe["date"]).dt.normalize()
+    dfe = dfe.sort_values("date")
+
+    last_actual_dt = LAST_ACTUAL.get(entity, dfe["date"].max().normalize())
+    dfe = dfe[dfe["date"] <= last_actual_dt].copy()
+    if dfe.empty:
+        raise RuntimeError(f"Data kosong untuk {entity} sebelum {last_actual_dt}")
+
     preds = []
 
     for _ in range(days):
-        df_feat, _ = make_features_entity(dfe, horizon=1)
-        if df_feat.empty:
-            raise RuntimeError("Fitur kosong saat inference.")
-        x_last_df = df_feat[feature_cols].iloc[[-1]].copy()
+        # 🔧 HANYA bangun fitur, TANPA y_next/y_diff, TANPA drop last row
+        df_feat_all, _ = make_features_for_next(dfe)
 
-        yhat_tr = float(_predict_with_safe_names(model, x_last_df)[0])
-        last_date  = df_feat.iloc[-1]["date"]
-        last_value = dfe["value"].iloc[-1]
+        # Ambil baris TERAKHIR & subset ke feature_cols yang dipakai model
+        x_last_df = df_feat_all.iloc[[-1]][feature_cols].copy()
+        if x_last_df.isna().any(axis=None):
+            # kalau masih NaN, berarti histori belum cukup utk lags/rolling
+            raise RuntimeError("Fitur terakhir masih NaN (histori kurang).")
+
+        yhat_tr   = float(_predict_with_safe_names(model, x_last_df)[0])
+        last_date = dfe["date"].max().normalize()
+        last_val  = float(dfe["value"].iloc[-1])
 
         if mode == "level":
-            if transform == "log":
-                y_next_level = float(np.exp(yhat_tr) * smear)
-            else:
-                y_next_level = float(yhat_tr)
+            y_next = float(np.exp(yhat_tr) * smear) if transform == "log" else float(yhat_tr)
         else:
-            delta_hat = float(alpha * yhat_tr)
-            delta_hat = float(np.clip(delta_hat, -500, 500))
-            y_next_level = float(last_value + delta_hat)
+            delta  = float(alpha * yhat_tr)
+            delta  = float(np.clip(delta, -500, 500))
+            y_next = float(last_val + delta)
 
         next_date = last_date + pd.Timedelta(days=1)
-        preds.append({"date": next_date.date().isoformat(), "pred": round(y_next_level, 4)})
 
+        # Guard anti non-monotonic
+        if preds and pd.to_datetime(preds[-1]["date"]) >= next_date:
+            next_date = pd.to_datetime(preds[-1]["date"]) + pd.Timedelta(days=1)
+
+        preds.append({"date": next_date.date().isoformat(), "pred": round(y_next, 4)})
+
+        # Append agar step berikutnya bisa pakai prediksi ini
         dfe = pd.concat(
-            [dfe, pd.DataFrame([{"entity": entity, "date": next_date, "value": y_next_level}])],
+            [dfe, pd.DataFrame([{"entity": entity, "date": next_date, "value": y_next}])],
             ignore_index=True
         )
+
     return preds
 
 _TOPN_CACHE = {"mtime": None, "df": None}
@@ -863,16 +962,15 @@ def api_metrics():
 
     return jsonify({"city": slug, "entity": entity, "best_config": pack["config"], "metrics": pack["metrics"]})
 
+
 @app.route("/api/predict_range")
 def api_predict_range():
     """
     Query:
-      - city  : slug (wajib)
-      - start : 'YYYY-MM-DD' (wajib)
-      - end   : 'YYYY-MM-DD' (wajib)
-      - hide_actual=1|0       (opsional)
-      - future_only=1|0       (opsional, jika 1 maka one-step historis tidak dikirim)
-      - naive_fallback=1|0    (opsional, jika model tak ada → isi flat = last actual)
+      - city, start, end (wajib)
+      - hide_actual=1|0        : sembunyikan garis aktual (opsional)
+      - future_only=1|0        : jika 1, TIDAK kirim one-step historis (opsional)
+      - naive_fallback=1|0     : bila model tak ada, isi flat last-actual (opsional)
     """
     slug = request.args.get("city", "").strip().lower()
     start_str = request.args.get("start", "").strip()
@@ -894,47 +992,50 @@ def api_predict_range():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+    # data mentah untuk entity
     dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["date","value"]].copy()
     if dfe.empty:
         return jsonify({"error": f"data '{entity}' kosong"}), 404
     dfe["date"] = dfe["date"].dt.normalize()
 
+    # cutoff aktual terakhir (mis. 2025-07-01 / 2025-07-07, dll)
     last_actual_dt = LAST_ACTUAL.get(entity, dfe["date"].max().normalize())
 
     print(f"DEBUG /api/predict_range entity={entity} start={start_dt.date()} end={end_dt.date()} last_actual={last_actual_dt.date()} future_only={future_only} naive_fallback={naive_fallback}")
 
-    # ===== ACTUAL (hanya sampai last_actual_dt)
-    hist_end_for_actual = min(end_dt, last_actual_dt)
-    mask_hist = (dfe["date"] >= start_dt) & (dfe["date"] <= hist_end_for_actual)
-    actual_series = [{"date": d.date().isoformat(), "value": float(v)}
-                     for d, v in zip(dfe.loc[mask_hist, "date"], dfe.loc[mask_hist, "value"])]
-    if hide_actual:
-        actual_series = []
+    # ====== AKTUAL (hanya sampai cutoff) ======
+    actual_series = []
+    if not hide_actual:
+        hist_end_for_actual = min(end_dt, last_actual_dt)
+        mask_hist = (dfe["date"] >= start_dt) & (dfe["date"] <= hist_end_for_actual)
+        for d, v in zip(dfe.loc[mask_hist, "date"], dfe.loc[mask_hist, "value"]):
+            actual_series.append({"date": d.date().isoformat(), "value": float(v)})
 
     predicted_series = []
 
-    # ===== ONE-STEP HISTORIS (skip jika future_only)
-    if not future_only:
+    # ====== ONE-STEP (prediksi di area historis) ======
+    # Catatan: hanya sampai cutoff (<= last_actual_dt), jadi tidak overlap dengan future.
+    if not future_only and start_dt <= last_actual_dt:
         try:
-            one_step = _one_step_predict_series(entity)
-            hist_end = min(end_dt, last_actual_dt)
-            mask_hist_pred = (one_step["date"] >= start_dt) & (one_step["date"] <= hist_end)
+            one_step = _one_step_predict_series(entity)  # kolom: date, pred
+            mask_hist_pred = (one_step["date"] >= start_dt) & (one_step["date"] <= min(end_dt, last_actual_dt))
             for d, v in zip(one_step.loc[mask_hist_pred, "date"], one_step.loc[mask_hist_pred, "pred"]):
                 predicted_series.append({"date": d.date().isoformat(), "value": float(v), "pred": float(v)})
-            print(f"DEBUG one-step added: {len(predicted_series)}")
+            print(f"DEBUG one-step added: {mask_hist_pred.sum()}")
         except FileNotFoundError:
             print("DEBUG one-step: no model file")
         except Exception as e:
             print(f"DEBUG one-step error: {e}")
             return jsonify({"error": f"gagal memprediksi (historis): {e}"}), 500
 
-    # ===== FUTURE (recursive) =====
+    # ====== FUTURE (prediksi > cutoff, recursive) ======
     if end_dt > last_actual_dt:
-        anchor = max(last_actual_dt, start_dt - pd.Timedelta(days=1))
-        days_need = int((end_dt - anchor).days)
+        # mulai prediksi dari H+1 setelah cutoff
+        anchor = last_actual_dt
+        days_need = int((end_dt - anchor).days)  # jumlah hari yang perlu diprediksi
         print(f"DEBUG future anchor={anchor.date()} days_need={days_need}")
         try:
-            preds = _recursive_predict(entity, days=days_need)  # [{date, pred}]
+            preds = _recursive_predict(entity, days=days_need)  # list {date:'YYYY-MM-DD', pred:float}
             cnt = 0
             for p in preds:
                 p_dt = pd.to_datetime(p["date"]).normalize()
@@ -958,14 +1059,32 @@ def api_predict_range():
             print(f"DEBUG future error: {e}")
             return jsonify({"error": f"gagal memprediksi (future): {e}"}), 500
 
+    # ====== Rapikan (sort & dedup di predicted) ======
     predicted_series.sort(key=lambda x: x["date"])
+    seen = set()
+    unique_pred = []
+    for p in predicted_series:
+        if p["date"] in seen:
+            continue
+        seen.add(p["date"])
+        unique_pred.append(p)
+    predicted_series = unique_pred
+
     print(f"DEBUG result actual={len(actual_series)} predicted={len(predicted_series)}")
+    summary_pred = _series_stats(predicted_series)
+    summary_act  = _series_stats(actual_series)
+
     return jsonify({
-        "city": slug, "entity": entity,
+        "city": slug,
+        "entity": entity,
         "range": {"start": start_dt.date().isoformat(), "end": end_dt.date().isoformat()},
         "last_actual": last_actual_dt.date().isoformat(),
         "actual": actual_series,
-        "predicted": predicted_series
+        "predicted": predicted_series,
+        "summary": {
+        "actual": summary_act,
+        "predicted": summary_pred
+    }
     })
 
 @app.route("/api/reload", methods=["POST"])
@@ -1131,6 +1250,138 @@ def api_top_cities():
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "data": out
     })
+
+# ===== Loader Excel regional (ringkasan korelasi) =====
+def _norm_colmap_regional(df: pd.DataFrame):
+    cmap = {c.lower().strip(): c for c in df.columns}
+    def pick(*xs):
+        for x in xs:
+            if x in cmap: return cmap[x]
+        return None
+    return dict(
+        city  = pick("city","kota","kab/kota","kabupaten/kota","entity","label"),
+        prov  = pick("province","provinsi"),
+        isl   = pick("island","pulau"),
+        vmin  = pick("min_value","harga_terendah","min"),
+        dmin  = pick("min_date","tanggal_harga_terendah","min_tanggal","min_date_iso"),
+        vmax  = pick("max_value","harga_tertinggi","max"),
+        dmax  = pick("max_date","tanggal_harga_tertinggi","max_tanggal","max_date_iso"),
+        hi    = pick("avg_month_high","rata2_bulan_tertinggi","avg_high"),
+        hi_m  = pick("avg_month_high_month","bulan_rata2_tertinggi","avg_high_month"),
+        hi_y  = pick("avg_month_high_year","tahun_rata2_tertinggi","avg_high_year"),
+        lo    = pick("avg_month_low","rata2_bulan_terendah","avg_low"),
+        lo_m  = pick("avg_month_low_month","bulan_rata2_terendah","avg_low_month"),
+        lo_y  = pick("avg_month_low_year","tahun_rata2_terendah","avg_low_year"),
+    )
+
+def _num_id(x):
+    if pd.isna(x): return np.nan
+    s = str(x).strip()
+    s = re.sub(r"[^\d.\-]", "", s)
+    if s.count(".") == 1:
+        L, R = s.split(".")
+        if R.isdigit() and len(R) == 3: s = L + R
+    try: return float(s)
+    except: return np.nan
+
+def _date_iso(x):
+    if pd.isna(x): return None
+    try: return pd.to_datetime(x).date().isoformat()
+    except: return str(x)
+
+def _load_regional_df():
+    if not REGIONAL_XLSX.exists():
+        raise FileNotFoundError(f"Regional summary tidak ditemukan: {REGIONAL_XLSX}")
+    mtime = REGIONAL_XLSX.stat().st_mtime
+    if _REGION_CACHE["df"] is not None and _REGION_CACHE["mtime"] == mtime:
+        return _REGION_CACHE["df"]
+
+    src = pd.read_excel(REGIONAL_XLSX, sheet_name=0)
+    cm = _norm_colmap_regional(src)
+
+    # Fallback: pakai city_label atau city_key kalau "city" nggak ketemu
+    if not cm.get("city"):
+        if "city_label" in src.columns:
+            cm["city"] = "city_label"
+        elif "city_key" in src.columns:
+            cm["city"] = "city_key"
+
+    if not cm.get("city") or not cm.get("prov"):
+        raise ValueError("Excel perlu minimal kolom City & Province (nama fleksibel).")
+
+    df = pd.DataFrame({
+        "city":     src[cm["city"]].astype(str).str.strip(),
+        "province": src[cm["prov"]].astype(str).str.strip(),
+        "island":   src[cm["isl"]].astype(str).str.strip() if cm["isl"] else "",
+        "min_value": src[cm["vmin"]].apply(_num_id) if cm["vmin"] else np.nan,
+        "min_date":  src[cm["dmin"]].apply(_date_iso) if cm["dmin"] else None,
+        "max_value": src[cm["vmax"]].apply(_num_id) if cm["vmax"] else np.nan,
+        "max_date":  src[cm["dmax"]].apply(_date_iso) if cm["dmax"] else None,
+        "avg_month_high":        src[cm["hi"]].apply(_num_id) if cm["hi"] else np.nan,
+        "avg_month_high_month":  pd.to_numeric(src[cm["hi_m"]], errors="coerce").astype("Int64") if cm["hi_m"] else pd.Series([pd.NA]*len(src), dtype="Int64"),
+        "avg_month_high_year":   pd.to_numeric(src[cm["hi_y"]], errors="coerce").astype("Int64") if cm["hi_y"] else pd.Series([pd.NA]*len(src), dtype="Int64"),
+        "avg_month_low":         src[cm["lo"]].apply(_num_id) if cm["lo"] else np.nan,
+        "avg_month_low_month":   pd.to_numeric(src[cm["lo_m"]], errors="coerce").astype("Int64") if cm["lo_m"] else pd.Series([pd.NA]*len(src), dtype="Int64"),
+        "avg_month_low_year":    pd.to_numeric(src[cm["lo_y"]], errors="coerce").astype("Int64") if cm["lo_y"] else pd.Series([pd.NA]*len(src), dtype="Int64"),
+    })
+
+    # isi island kalau kosong pakai PROVINCE_TO_ISLAND
+    def _isl_from_prov(p):
+        return PROVINCE_TO_ISLAND.get(str(p).upper())
+    df.loc[(~df["province"].isna()) & ((df["island"]=="") | (df["island"].isna())), "island"] = \
+        df["province"].map(lambda p: _isl_from_prov(p) or "")
+
+    df["island"] = df["island"].replace({"Bali-NT": "Bali–NT"}).fillna("")
+    _REGION_CACHE.update({"mtime": mtime, "df": df})
+    return df
+
+@app.route("/api/provinces")
+def api_provinces():
+    try:
+        df = _load_regional_df()
+        provs = sorted({p for p in df["province"].dropna().astype(str).str.strip() if p})
+        return jsonify(provs)
+    except Exception as e:
+        return jsonify({"error": f"Gagal baca provinsi: {e}"}), 500
+
+@app.route("/api/region_summary")
+def api_region_summary():
+    mode  = (request.args.get("mode") or "island").strip().lower()   # 'island' | 'province'
+    value = (request.args.get("value") or "").strip()
+    if mode not in ("island","province"):
+        return jsonify({"error":"mode harus 'island' atau 'province'"}), 400
+    if not value:
+        return jsonify({"error":"parameter 'value' wajib"}), 400
+    try:
+        df = _load_regional_df()
+        if mode == "island":
+            sub = df[df["island"].str.casefold() == value.casefold()].copy()
+        else:
+            sub = df[df["province"].str.casefold() == value.casefold()].copy()
+
+        sub = sub.sort_values(["province","city"], kind="stable")
+        rows = []
+        for i, r in enumerate(sub.itertuples(index=False), start=1):
+            rows.append({
+                "no": i,
+                "city": r.city,
+                "province": r.province,
+                "island": r.island or None,
+                "min_value": None if pd.isna(r.min_value) else float(r.min_value),
+                "min_date":  r.min_date,
+                "max_value": None if pd.isna(r.max_value) else float(r.max_value),
+                "max_date":  r.max_date,
+                "avg_month_high": None if pd.isna(r.avg_month_high) else float(r.avg_month_high),
+                "avg_month_high_month": None if pd.isna(r.avg_month_high_month) else int(r.avg_month_high_month),
+                "avg_month_high_year":  None if pd.isna(r.avg_month_high_year)  else int(r.avg_month_high_year),
+                "avg_month_low": None if pd.isna(r.avg_month_low) else float(r.avg_month_low),
+                "avg_month_low_month": None if pd.isna(r.avg_month_low_month) else int(r.avg_month_low_month),
+                "avg_month_low_year":  None if pd.isna(r.avg_month_low_year)  else int(r.avg_month_low_year),
+            })
+        return jsonify({"mode": mode, "value": value, "count": len(rows), "rows": rows})
+    except Exception as e:
+        return jsonify({"error": f"Gagal memproses: {e}"}), 500
+
 # =======================
 # MAIN
 # =======================
