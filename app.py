@@ -116,6 +116,24 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(seconds=0)
 # UTIL DATA
 # =======================
 
+# ===== Kalender flags sederhana (SAMAKAN dengan training) =====
+EID_DATES = ["2020-05-24","2021-05-13","2022-05-02","2023-04-22","2024-04-10","2025-03-31"]
+
+def _make_calendar_flags(idx: pd.DatetimeIndex) -> pd.DataFrame:
+    f = pd.DataFrame(index=idx)
+    f["month"] = idx.month
+    f["dayofweek"] = idx.dayofweek
+    # penting: nama kolom HARUS sama dgn training
+    f["time_index"] = (idx - idx.min()).days
+    f["is_end_of_year"] = ((idx.month == 12) & (idx.day >= 22)).astype(int)
+    f["is_new_year"] = ((idx.month == 1) & (idx.day <= 7)).astype(int)
+    eid = np.zeros(len(idx), dtype=int)
+    for d in EID_DATES:
+        t = pd.Timestamp(d)
+        eid |= ((idx >= t - pd.Timedelta(days=14)) & (idx <= t + pd.Timedelta(days=7))).astype(int)
+    f["is_eid_window"] = eid
+    return f
+
 def to_numeric_series(s: pd.Series) -> pd.Series:
     s = s.astype(str).str.strip()
     s = s.replace({"-": np.nan, "": np.nan})
@@ -127,12 +145,28 @@ def build_wide_long(path_xlsx: str, fill_method: str):
     date_col   = raw.columns[0]
     value_cols = raw.columns[1:]
 
-    raw[date_col] = raw[date_col].astype(str).str.replace(r"\s+", "", regex=True)
-    raw[date_col] = pd.to_datetime(raw[date_col], dayfirst=True, errors="coerce")
+    # >>> samakan dengan training: TANPA dayfirst
+    raw[date_col] = pd.to_datetime(raw[date_col], errors="coerce")
+
     raw = raw.dropna(subset=[date_col]).sort_values(date_col).reset_index(drop=True)
 
+    # >>> pakai parser angka yang robust gaya Indonesia/Inggris
+    def _parse_num_id_en(x):
+        if pd.isna(x): return np.nan
+        s = str(x).strip()
+        # buang semua pemisah ribuan umum: spasi, koma, titik
+        # lalu pulihkan titik desimal jika memang desimal (jarang dipakai di dataset harga harian)
+        s = re.sub(r"[^\d,.\-]", "", s)
+        # kasus ribuan ID: 17.750 -> 17750
+        if s.count(".") == 1 and s.split(".")[1].isdigit() and len(s.split(".")[1]) == 3:
+            s = s.replace(".", "")
+        # kasus ribuan EN: 18,000 -> 18000
+        s = s.replace(",", "")
+        try: return float(s)
+        except: return np.nan
+
     for c in value_cols:
-        raw[c] = to_numeric_series(raw[c])
+        raw[c] = raw[c].apply(_parse_num_id_en)
 
     full_idx = pd.date_range(raw[date_col].min(), raw[date_col].max(), freq="D")
     wide = (raw.set_index(date_col).reindex(full_idx).rename_axis("date").sort_index())
@@ -140,8 +174,7 @@ def build_wide_long(path_xlsx: str, fill_method: str):
     if fill_method == "ffill_bfill":
         wide[value_cols] = wide[value_cols].ffill().bfill()
     elif fill_method == "interpolate":
-        wide[value_cols] = wide[value_cols].interpolate(method="time", limit_direction="both")
-        wide[value_cols] = wide[value_cols].ffill().bfill()
+        wide[value_cols] = wide[value_cols].interpolate(method="time", limit_direction="both").ffill().bfill()
     else:
         raise ValueError("FILL_METHOD harus 'ffill_bfill' atau 'interpolate'.")
 
@@ -153,6 +186,7 @@ def build_wide_long(path_xlsx: str, fill_method: str):
     long_df["entity"] = (long_df["entity"].astype(str).str.strip().str.lower()
                          .str.replace(r"\s+", "_", regex=True))
     return wide, long_df
+
 
 def _compute_last_actual_dates(path_xlsx: str) -> dict:
     """Cari last tanggal NON-NaN per kolom di file mentah (bukan hasil ffill penuh)."""
@@ -211,40 +245,52 @@ def _series_stats(list_of_dict):
         change_pct=change_pct
     )
 
+# Kalender flags sederhana (samakan dengan training)
+EID_DATES = ["2020-05-24","2021-05-13","2022-05-02","2023-04-22","2024-04-10","2025-03-31"]
+
+
+def make_flags(idx) -> pd.DataFrame:
+    di = pd.DatetimeIndex(pd.to_datetime(idx, errors="coerce")).tz_localize(None).normalize()
+    f = pd.DataFrame(index=di)
+    f["month"] = di.month
+    f["dayofweek"] = di.dayofweek
+    # time index berbasis awal seri
+    f["time_index"] = (di - di.min()).days
+    f["is_end_of_year"] = ((di.month == 12) & (di.day >= 22)).astype(int)
+    f["is_new_year"]  = ((di.month == 1) & (di.day <= 7)).astype(int)
+
+    eid = np.zeros(len(di), dtype=int)
+    for d in EID_DATES:
+        t = pd.Timestamp(d)
+        eid |= ((di >= t - pd.Timedelta(days=14)) & (di <= t + pd.Timedelta(days=7))).astype(int)
+    f["is_eid_window"] = eid
+    return f
+
 
 def make_features_entity(dfe: pd.DataFrame, horizon=1):
     df = dfe.sort_values("date").copy()
 
-    lags_short  = [1, 2, 3, 7, 14, 21, 30]
-    lags_long   = [60, 90]
-    for L in lags_short + lags_long:
-        df[f"lag_{L}"] = df["value"].shift(L)
+    # === hanya fitur yang dipakai saat training lag30 ===
+    df["lag_1"]  = df["value"].shift(1)
+    df["lag_30"] = df["value"].shift(30)
 
-    for W in [7, 14, 30]:
-        s = df["value"].shift(1).rolling(W, min_periods=3)
-        df[f"roll{W}_mean"]   = s.mean()
-        df[f"roll{W}_std"]    = s.std()
-        df[f"roll{W}_median"] = s.median()
-    for W in [30, 60, 90]:
-        s = df["value"].shift(1).rolling(W, min_periods=5)
-        df[f"roll{W}_min"] = s.min()
-        df[f"roll{W}_max"] = s.max()
+    # flags kalender (TIDAK bikin month/dayofweek lagi di luar flags)
+    flags = make_flags(df["date"])
+    df = pd.concat([df.set_index("date"), flags], axis=1).reset_index()
 
-    df["diff1"] = df["value"].diff(1)
-    df["diff7"] = df["value"].diff(7)
-
-    df["dayofweek"]  = df["date"].dt.dayofweek
-    df["weekofyear"] = df["date"].dt.isocalendar().week.astype(int)
-    df["month"]      = df["date"].dt.month
-
-    add_fourier(df, "date", periods=[7, 365.25], K=2, prefix="fyr")
-
+    # target untuk one-step eval
     df["y_next"] = df["value"].shift(-1)
     df["y_diff"] = df["y_next"] - df["value"]
 
-    df = df.dropna().reset_index(drop=True)
-    feature_cols = [c for c in df.columns if c not in ["entity","date","value","y_next","y_diff"]]
+    # drop baris yang belum punya lags
+    df = df.dropna(subset=["lag_1","lag_30","y_next"]).reset_index(drop=True)
+
+    # urutan fitur persis seperti model.feature_names_in_
+    feature_cols = ["lag_1","lag_30","month","dayofweek","time_index",
+                    "is_end_of_year","is_new_year","is_eid_window"]
     return df, feature_cols
+
+
 
 def _week_of_month_int(dt: pd.Timestamp) -> int:
     return int(((dt.day - 1) // 7) + 1)
@@ -396,54 +442,120 @@ def _slug_to_entity(s: str) -> str:
     raise ValueError(f"Mapping untuk '{s}' tidak ditemukan. Periksa city_coords.json / nama kolom Excel.")
 
 def _predict_with_safe_names(model, X_df: pd.DataFrame):
+    """
+    Selaraskan X_df ke fitur yang dipakai saat fit:
+    - Tambah kolom yang hilang (isi 0.0)
+    - Urutkan persis sesuai model.feature_names_in_
+    - Drop kolom ekstra
+    """
     feat_in = getattr(model, "feature_names_in_", None)
-    if feat_in is not None:
-        cols = [c for c in feat_in if c in X_df.columns]
-        return model.predict(X_df[cols])
-    return model.predict(X_df.to_numpy())
+    if feat_in is None:
+        # Estimator lama -> pakai urutan array
+        return model.predict(X_df.to_numpy())
+
+    # Tambah kolom yang hilang
+    for c in feat_in:
+        if c not in X_df.columns:
+            X_df[c] = 0.0
+
+    # Reindex persis urutan saat fit
+    X_aligned = X_df.reindex(columns=list(feat_in), fill_value=0.0)
+    return model.predict(X_aligned)
+
+def _apply_rolling(series_list, window=30, minp=None):
+    if not series_list or window <= 1:
+        return series_list
+
+    # samakan dengan training: min_periods=1 (tidak buang data awal)
+    if minp is None:
+        minp = 1
+
+    df = pd.DataFrame(series_list)
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date")
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+
+    # rolling non-centered, anti-leakage seperti training
+    df["value"] = df["value"].rolling(window, min_periods=minp).mean()
+
+    # JANGAN drop awal; biarkan nilai awal sudah tersmooth (tidak NaN karena min_periods=1)
+    out = [{"date": d.date().isoformat(), "value": float(v)}
+           for d, v in zip(df["date"], df["value"]) if pd.notna(v)]
+    return out
 
 def _load_model_for_entity(entity: str):
     if entity in _MODEL_CACHE:
         return _MODEL_CACHE[entity]
 
-    files = sorted(MODELS_DIR.glob(f"{entity}*.joblib"))
+    # 1) Cari pack terlebih dulu
+    files = sorted(MODELS_DIR.glob(f"{entity}*best_pack.joblib"))
+    # 2) Fallback: file joblib apa pun yang cocok
+    if not files:
+        files = sorted(MODELS_DIR.glob(f"{entity}*.joblib"))
     if not files:
         raise FileNotFoundError(f"Model file untuk '{entity}' tidak ditemukan di {MODELS_DIR}")
 
     pack = joblib.load(files[0])
-    model = pack["model"]
-    feature_cols = pack["feature_cols"]
-    best_cfg = pack.get("best_config", {"mode": "level", "transform": "none", "train_until": None})
-    alpha = float(best_cfg.get("alpha_blend", 1.0))
-    metrics = pack.get("metrics", {})
 
-    # reconstruct smearing factor (kalau level+log)
+    # --- Normalisasi isi pack ---
+    if isinstance(pack, dict) and "model" in pack and "feature_cols" in pack:
+        model        = pack["model"]
+        feature_cols = list(pack["feature_cols"])
+        best_cfg     = pack.get("best_config", {"mode": "level", "transform": "none", "train_until": None, "alpha_blend": 1.0})
+        metrics      = pack.get("metrics", {})
+    else:
+        model        = pack
+        feature_cols = list(getattr(model, "feature_names_in_", []))
+        best_cfg     = {"mode": "level", "transform": "none", "train_until": None, "alpha_blend": 1.0}
+        metrics      = {}
+        print(f">> WARNING: '{files[0].name}' bukan pack. Memakai raw estimator.")
+
+    alpha      = float(best_cfg.get("alpha_blend", 1.0))
+    mode       = best_cfg.get("mode", "level")
+    transform  = best_cfg.get("transform", "none")
+
+    # === Reconstruct smearing (kalau level+log) ===
     dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["entity","date","value"]].copy()
     df_feat, _ = make_features_entity(dfe, horizon=1)
 
-    train_until = pd.to_datetime(best_cfg.get("train_until")) if best_cfg.get("train_until") else df_feat["date"].max()
-    tr_mask = df_feat["date"] <= train_until
-    df_train = df_feat.loc[tr_mask].copy()
-    if df_train.empty:
-        raise RuntimeError("TRAIN subset kosong saat reconstruct smearing.")
+    train_until_raw = best_cfg.get("train_until")
+    train_until = pd.to_datetime(train_until_raw) if train_until_raw else df_feat["date"].max()
+    df_train = df_feat.loc[df_feat["date"] <= train_until].copy()
 
-    mode = best_cfg.get("mode", "level")
-    transform = best_cfg.get("transform", "none")
     use_log = (mode == "level" and transform == "log")
-
-    if mode == "level":
-        y_train = df_train["y_next"].values
-        y_train_tr = np.log(y_train) if use_log else y_train
-    else:
-        y_train = df_train["y_diff"].values
-        y_train_tr = y_train
+    smear = 1.0  # default aman
 
     if use_log:
-        yhat_tr = _predict_with_safe_names(model, df_train[feature_cols].copy())
-        resid_log = y_train_tr - yhat_tr
-        smear = float(np.mean(np.exp(resid_log)))
-    else:
-        smear = 1.0
+        if df_train.empty:
+            # fallback: pakai 80% awal bila cukup panjang; kalau tidak, smear=1.0
+            n = len(df_feat)
+            if n >= 20:
+                cut = max(10, int(0.8 * n))
+                df_train = df_feat.iloc[:cut].copy()
+                warnings.warn(f"[{entity}] TRAIN subset kosong (train_until={train_until_raw}); "
+                              f"fallback {cut}/{n} baris pertama untuk smearing.")
+            else:
+                warnings.warn(f"[{entity}] Data terlalu pendek ({n}); set smear=1.0.")
+
+        if not df_train.empty:
+            # pilih kolom aman
+            if feature_cols:
+                cols = [c for c in feature_cols if c in df_train.columns]
+            else:
+                cols = list(getattr(model, "feature_names_in_", []))
+                cols = [c for c in cols if c in df_train.columns]
+            if not cols:
+                cols = [c for c in df_train.columns if c not in ("entity","date","value","y_next","y_diff")]
+
+            X_tr = df_train[cols].dropna(axis=0)
+            if X_tr.empty:
+                warnings.warn(f"[{entity}] X_tr kosong setelah dropna; smear=1.0.")
+                smear = 1.0
+            else:
+                y_train = df_train.loc[X_tr.index, "y_next"].values
+                yhat_tr = _predict_with_safe_names(model, X_tr)
+                resid_log = np.log(y_train) - yhat_tr
+                smear = float(np.mean(np.exp(resid_log)))
 
     _MODEL_CACHE[entity] = {
         "model": model,
@@ -455,82 +567,85 @@ def _load_model_for_entity(entity: str):
         "transform": transform,
         "alpha": alpha,
     }
-    print(f">> Loaded model for {entity} | smear={smear:.6f} | mode={mode}/{transform}")
+    print(f">> Loaded model for {entity} | smear={smear:.6f} | mode={mode}/{transform} | file={files[0].name}")
     return _MODEL_CACHE[entity]
 
 def _one_step_predict_series(entity: str) -> pd.DataFrame:
-    """Prediksi one-step-ahead (historis). Return: [date (t+1), pred(level)]."""
+    """
+    Prediksi one-step-ahead (historis) dengan feature builder yang IDENTIK dgn training.
+    Return: DataFrame [date (t+1), pred(level)].
+    """
     b = _load_model_for_entity(entity)
-    model = b["model"]; feature_cols = b["feature_cols"]
-    mode = b["mode"]; transform = b["transform"]; smear = b["smear"]; alpha = b.get("alpha", 1.0)
+    model     = b["model"]
+    mode      = b["mode"]
+    transform = b["transform"]
+    smear     = b["smear"]
+    alpha     = b.get("alpha", 1.0)
 
     dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["entity","date","value"]].copy()
-    df_feat, _ = make_features_entity(dfe, horizon=1)
+    dfe["date"] = pd.to_datetime(dfe["date"]).dt.normalize()
 
-    yhat_tr = _predict_with_safe_names(model, df_feat[feature_cols].copy())
+    df_feat = _build_features_training_like(dfe, add_targets=True)
+
+    # Ambil semua kolom fitur (tanpa entity/date/value/targets)
+    X = df_feat.drop(columns=["entity","date","value","y_next","y_diff"], errors="ignore")
+    # Filter baris valid (tanpa NaN)
+    mask_valid = ~X.isna().any(axis=1)
+    X = X.loc[mask_valid]
+    dfv = df_feat.loc[mask_valid]
+
+    if X.empty:
+        raise RuntimeError("Fitur historis kosong setelah filter NaN (histori kurang).")
+
+    yhat_tr = _predict_with_safe_names(model, X)
+
+    # Kembalikan ke level
     if mode == "level":
         yhat_level = np.exp(yhat_tr) * smear if transform == "log" else yhat_tr
     else:
-        yhat_level = df_feat["value"].values + (alpha * yhat_tr)
+        base_val   = dfv["value"].to_numpy()
+        yhat_level = base_val + (alpha * yhat_tr)
 
-    dates = (df_feat["date"] + pd.Timedelta(days=1)).dt.normalize()
+    dates = (dfv["date"] + pd.Timedelta(days=1)).dt.normalize()
     out = pd.DataFrame({"date": dates, "pred": yhat_level})
     return out.sort_values("date").reset_index(drop=True)
 
 
 def make_features_for_next(dfe: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    """Bangun fitur utk prediksi step berikutnya (tanpa y_next/y_diff & tanpa drop last row)."""
+    """
+    Generator fitur untuk prediksi recursive H+1 yang
+    *persis* sama dengan fitur training 'lag30':
+      ['lag_1','lag_30','month','dayofweek','time_index',
+       'is_end_of_year','is_new_year','is_eid_window']
+    """
     df = dfe.sort_values("date").copy()
 
-    # Lags
-    for L in [1, 2, 3, 7, 14, 21, 30, 60, 90]:
-        df[f"lag_{L}"] = df["value"].shift(L)
+    # Lags yang dipakai saat training
+    df["lag_1"]  = df["value"].shift(1)
+    df["lag_30"] = df["value"].shift(30)
 
-    # Rolling (pakai shift(1) supaya tidak leakage)
-    for W in [7, 14, 30]:
-        s = df["value"].shift(1).rolling(W, min_periods=3)
-        df[f"roll{W}_mean"]   = s.mean()
-        df[f"roll{W}_std"]    = s.std()
-        df[f"roll{W}_median"] = s.median()
-    for W in [30, 60, 90]:
-        s = df["value"].shift(1).rolling(W, min_periods=5)
-        df[f"roll{W}_min"] = s.min()
-        df[f"roll{W}_max"] = s.max()
+    # Kalender/flags (jangan buat month/dayofweek dua kali)
+    flags = make_flags(df["date"])  # berisi month, dayofweek, time_index, is_* dll
+    df = pd.concat([df.set_index("date"), flags], axis=1).reset_index()
 
-    # Diff (feature, bukan target)
-    df["diff1"] = df["value"].diff(1)
-    df["diff7"] = df["value"].diff(7)
-
-    # Kalender
-    df["dayofweek"]  = df["date"].dt.dayofweek
-    df["weekofyear"] = df["date"].dt.isocalendar().week.astype(int)
-    df["month"]      = df["date"].dt.month
-
-    # Fourier (musiman)
-    add_fourier(df, "date", periods=[7, 365.25], K=2, prefix="fyr")
-
-    # Ambil hanya kolom fitur yang memang dipakai model
-    # (biar konsisten dengan model yang tersimpan)
+    # Kolom fitur final & urutan default (akan tetap disejajarkan lagi di _predict_with_safe_names)
     feature_cols = [
-        # contoh: sesuaikan dgn pack["feature_cols"]
-        # atau nanti ambil subset berdasarkan feature_cols dari model saat infer
-        "lag_1","lag_7","lag_14","roll7_mean","roll14_mean","dayofweek","month",
-        # tambahkan jika modelmu pakai kolom lain
+        "lag_1","lag_30","month","dayofweek","time_index",
+        "is_end_of_year","is_new_year","is_eid_window"
     ]
-
     return df, feature_cols
- 
+
+
 def _recursive_predict(entity: str, days: int):
     if days <= 0:
         return []
 
     b = _load_model_for_entity(entity)
-    model        = b["model"]
-    feature_cols = b["feature_cols"]      # dari joblib saat training
-    mode         = b["mode"]
-    transform    = b["transform"]
-    smear        = b["smear"]
-    alpha        = b.get("alpha", 1.0)
+    model     = b["model"]
+    mode      = b["mode"]
+    transform = b["transform"]
+    smear     = b["smear"]
+    alpha     = b.get("alpha", 1.0)
 
     dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["entity","date","value"]].copy()
     dfe["date"] = pd.to_datetime(dfe["date"]).dt.normalize()
@@ -542,18 +657,17 @@ def _recursive_predict(entity: str, days: int):
         raise RuntimeError(f"Data kosong untuk {entity} sebelum {last_actual_dt}")
 
     preds = []
-
     for _ in range(days):
-        # 🔧 HANYA bangun fitur, TANPA y_next/y_diff, TANPA drop last row
-        df_feat_all, _ = make_features_for_next(dfe)
+        # Build fitur training-like sampai tanggal TERAKHIR aktual/prediksi saat ini
+        df_feat = _build_features_training_like(dfe, add_targets=False)
 
-        # Ambil baris TERAKHIR & subset ke feature_cols yang dipakai model
-        x_last_df = df_feat_all.iloc[[-1]][feature_cols].copy()
-        if x_last_df.isna().any(axis=None):
-            # kalau masih NaN, berarti histori belum cukup utk lags/rolling
+        # Ambil baris TERAKHIR sebagai fitur untuk memprediksi t+1
+        # (di training, baris t dipakai untuk menebak y_{t+1})
+        X_last = df_feat.drop(columns=["entity","date","value"], errors="ignore").iloc[[-1]]
+        if X_last.isna().any(axis=None):
             raise RuntimeError("Fitur terakhir masih NaN (histori kurang).")
 
-        yhat_tr   = float(_predict_with_safe_names(model, x_last_df)[0])
+        yhat_tr = float(_predict_with_safe_names(model, X_last)[0])
         last_date = dfe["date"].max().normalize()
         last_val  = float(dfe["value"].iloc[-1])
 
@@ -565,20 +679,19 @@ def _recursive_predict(entity: str, days: int):
             y_next = float(last_val + delta)
 
         next_date = last_date + pd.Timedelta(days=1)
-
-        # Guard anti non-monotonic
         if preds and pd.to_datetime(preds[-1]["date"]) >= next_date:
             next_date = pd.to_datetime(preds[-1]["date"]) + pd.Timedelta(days=1)
 
         preds.append({"date": next_date.date().isoformat(), "pred": round(y_next, 4)})
 
-        # Append agar step berikutnya bisa pakai prediksi ini
+        # Append prediksi supaya step berikutnya bisa pakai sebagai lag_1, lag_30, dll.
         dfe = pd.concat(
             [dfe, pd.DataFrame([{"entity": entity, "date": next_date, "value": y_next}])],
             ignore_index=True
         )
 
     return preds
+
 
 _TOPN_CACHE = {"mtime": None, "df": None}
 def _parse_id_number(x):
@@ -1070,6 +1183,12 @@ def api_predict_range():
         unique_pred.append(p)
     predicted_series = unique_pred
 
+    viz_roll = int((request.args.get("viz_roll") or "0").strip() or 0)  # default 0 (tanpa smoothing)
+
+    if viz_roll > 1:
+        actual_series    = _apply_rolling(actual_series, window=viz_roll)
+        predicted_series = _apply_rolling(predicted_series, window=viz_roll)
+
     print(f"DEBUG result actual={len(actual_series)} predicted={len(predicted_series)}")
     summary_pred = _series_stats(predicted_series)
     summary_act  = _series_stats(actual_series)
@@ -1086,6 +1205,55 @@ def api_predict_range():
         "predicted": summary_pred
     }
     })
+
+# === FEATURE BUILDER (identik dgn training: lag_1, lag_30 + kalender flags) ===
+def _build_features_training_like(dfe: pd.DataFrame, add_targets: bool = False) -> pd.DataFrame:
+    df = dfe.sort_values("date").copy()
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    df = df.set_index("date")
+
+    # seri level
+    y = pd.to_numeric(df["value"], errors="coerce").astype(float)
+
+    # siapkan frame fitur
+    X = pd.DataFrame(index=y.index)
+
+    # selalu sediakan lag_1 (anchor)
+    X["lag_1"] = y.shift(1)
+
+    # BACA kebutuhan fitur langsung dari model
+    needed = set(getattr(_load_model_for_entity(dfe["entity"].iloc[0])["model"], "feature_names_in_", []))
+
+    # lags tambahan (hanya bila diminta model)
+    for L in (7, 14, 30):
+        col = f"lag_{L}"
+        if col in needed:
+            X[col] = y.shift(L)
+
+    # rolling mean (anti-leakage, shift(1))
+    for W in (7, 30):
+        col = f"rollmean_{W}"
+        if col in needed:
+            X[col] = y.shift(1).rolling(W, min_periods=max(1, W//2)).mean()
+
+    # flags kalender, persis spt training
+    flags = make_flags(X.index)
+    for c in ["month","dayofweek","time_index","is_end_of_year","is_new_year","is_eid_window"]:
+        if c in needed:
+            X[c] = flags[c]
+
+    # gabung & bersihkan
+    out = X.join(y.rename("value"))
+    if add_targets:
+        out["y_next"] = out["value"].shift(-1)
+        out["y_diff"] = out["y_next"] - out["value"]
+
+    out = out.reset_index().rename(columns={"index":"date"})
+    # drop baris yang belum punya semua fitur yang dibutuhkan model
+    must_have = [c for c in needed if c in out.columns]
+    out = out.dropna(subset=must_have).reset_index(drop=True)
+    return out
+
 
 @app.route("/api/reload", methods=["POST"])
 def api_reload():

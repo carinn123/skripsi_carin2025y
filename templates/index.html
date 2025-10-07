@@ -43,7 +43,7 @@
           <li><a href="#" class="nav-link active" data-section="beranda">Beranda</a></li>
           <li><a href="#" class="nav-link" data-section="tren">Tinjauan Tren</a></li>
           <li><a href="#" class="nav-link" data-section="prediksi">Prediksi</a></li>
-          <li><a href="#" class="nav-link" data-section="evaluasi">Evaluasi</a></li>
+          <!-- <li><a href="#" class="nav-link" data-section="evaluasi">Evaluasi</a></li> -->
         </ul>
       </nav>
     </header>
@@ -225,44 +225,62 @@
 
     <!-- ====== PREDIKSI ====== -->
     <div class="content-section" id="prediksi">
-      <h2 class="section-title">Prediksi Harga Minyak Goreng</h2>
-      <div class="input-row" style="margin-bottom:.8rem">
-        <div class="input-group"><label for="startDate">Pilih Tanggal Mulai</label><input type="date" id="startDate"></div>
-        <div class="input-group"><label for="endDate">Pilih Tanggal Akhir</label><input type="date" id="endDate"></div>
-        <div class="input-group"><button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button></div>
-      </div>
-      <div class="chart-container">
-        <canvas id="predChart"></canvas>
-        <div class="chart-placeholder" id="predPlaceholder">🔮 Pilih kab/kota …</div>
-      </div>
-      <!-- ====== RINGKASAN PREDIKSI ====== -->
-      <div class="stats-grid" id="predSummary" style="margin-top:1rem; display:none">
-        <div class="stat-card">
-          <div class="stat-value" id="predMaxVal">-</div>
-          <div class="stat-label">Prediksi Tertinggi</div>
-          <small id="predMaxDate" class="muted">—</small>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="predMinVal">-</div>
-          <div class="stat-label">Prediksi Terendah</div>
-          <small id="predMinDate" class="muted">—</small>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="predAvgVal">-</div>
-          <div class="stat-label">Rata-rata Prediksi</div>
-          <small id="predCount" class="muted">—</small>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="predChangePct">-</div>
-          <div class="stat-label">Perubahan (%)</div>
-          <small id="predChangeNote" class="muted">—</small>
-        </div>
-      </div>
+  <h2 class="section-title">Prediksi Harga Minyak Goreng</h2>
+
+  <!-- form tanggal -->
+  <div class="input-row" style="margin-bottom:.8rem">
+    <div class="input-group"><label for="startDate">Pilih Tanggal Mulai</label><input type="date" id="startDate"></div>
+    <div class="input-group"><label for="endDate">Pilih Tanggal Akhir</label><input type="date" id="endDate"></div>
+    <div class="input-group"><button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button></div>
+  </div>
+
+  <!-- GRAFIK PREDIKSI -->
+  <div class="chart-container">
+    <canvas id="predChart"></canvas>
+    <div class="chart-placeholder" id="predPlaceholder">🔮 Pilih kab/kota …</div>
+  </div>
+
+  <!-- RINGKASAN PREDIKSI (boleh tetap di-hide sampai ada data) -->
+  <div class="stats-grid" id="predSummary" style="margin-top:1rem; display:none">
+    <div class="stat-card">
+      <div class="stat-value" id="predMaxVal">-</div>
+      <div class="stat-label">Prediksi Tertinggi</div>
+      <small id="predMaxDate" class="muted">—</small>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="predMinVal">-</div>
+      <div class="stat-label">Prediksi Terendah</div>
+      <small id="predMinDate" class="muted">—</small>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="predAvgVal">-</div>
+      <div class="stat-label">Rata-rata Prediksi</div>
+      <small id="predCount" class="muted">—</small>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="predChangePct">-</div>
+      <div class="stat-label">Perubahan (%)</div>
+      <small id="predChangeNote" class="muted">—</small>
+    </div>
+  </div>
+
+  <!-- EVALUASI (HARUS DI LUAR #predSummary) -->
+  <h2 class="section-title" style="margin-top:1rem">Evaluasi Model & Performance</h2>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-value" id="mseValue">-</div><div class="stat-label">MSE</div></div>
+    <div class="stat-card"><div class="stat-value" id="rmseValue">-</div><div class="stat-label">RMSE</div></div>
+    <div class="stat-card"><div class="stat-value" id="mapeValue">-</div><div class="stat-label">MAPE (%)</div></div>
+    <div class="stat-card"><div class="stat-value" id="r2Value">-</div><div class="stat-label">R² Score</div></div>
+    <!-- kalau butuh Grade, tambah satu lagi:
+    <div class="stat-card"><div class="stat-value" id="performanceGrade">-</div><div class="stat-label">Grade Model</div></div>
+    -->
+  </div>
+</div>
 
     </div>
 
     <!-- ====== EVALUASI ====== -->
-    <div class="content-section" id="evaluasi">
+    <!-- <div class="content-section" id="evaluasi">
       <h2 class="section-title">Evaluasi Model & Performance</h2>
       <div class="chart-container"><div class="chart-placeholder">📊 Grafik Evaluasi …</div></div>
       <div class="stats-grid">
@@ -272,7 +290,7 @@
         <div class="stat-card"><div class="stat-value" id="performanceGrade">-</div><div class="stat-label">Grade Model</div></div>
       </div>
     </div>
-  </div>
+  </div> -->
 
   <!-- JS kamu -->
   <script src="/static/app.js" defer></script>

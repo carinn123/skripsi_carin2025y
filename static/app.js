@@ -497,15 +497,24 @@ function fullDateRange(start,end){
   for(let d=new Date(s); d<=e; d.setDate(d.getDate()+1)){ out.push(new Date(d).toISOString().slice(0,10)); } 
   return out; 
 }
+const VIZ_ROLL = 30; // rolling non-centered, min_periods≈15 (server)
+
+// ...
 async function fetchPredictRange(citySlug, startISO, endISO) {
   const params = new URLSearchParams({
-    city: citySlug, start: startISO, end: endISO,
-    future_only: '0', hide_actual: '0', naive_fallback: '1'
+    city: citySlug,
+    start: startISO,
+    end: endISO,
+    future_only: '0',
+    hide_actual: '0',
+    naive_fallback: '1',
+    viz_roll: String(VIZ_ROLL)   // <-- DULUNYA '0'
   });
   const r = await fetch(`/api/predict_range?${params.toString()}`);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+
 function _niceDate(idStr){
   // idStr 'YYYY-MM-DD' -> 'DD MMM YYYY'
   try{
@@ -571,9 +580,41 @@ function _renderPredSummary(labels, seriesPred){
 }
 
 
-let _predChart=null;
+let _predChart = null;
+
+// === Plugin: paksa jumlah tick X ===
+// === Plugin: paksa jumlah tick X jadi persis N ===
+const forceXTicksPlugin = {
+  id: 'forceXTicks',
+  afterBuildTicks(chart, args, opts) {
+    const scale = args.scale;               // <— ambil scalenya di sini
+    if (scale.axis !== 'x') return;
+
+    const desired = Number(opts?.count) || 12;
+    const ticks = scale.ticks || [];
+    const total = ticks.length;
+    if (total <= desired || desired < 2) return;
+
+    // ambil 'desired' titik merata (termasuk awal & akhir)
+    const step = (total - 1) / (desired - 1);
+    const keep = [];
+    for (let i = 0; i < desired; i++) {
+      const idx = Math.round(i * step);
+      keep.push(ticks[idx]);
+    }
+
+    // timpa ticks hasil build
+    args.ticks = keep;      // <- penting di v3/v4
+    scale.ticks = keep;     //   (aman juga diset untuk konsistensi)
+  }
+};
+if (window.Chart) Chart.register(forceXTicksPlugin);
+
+// Pastikan plugin ter-register
+
 function renderPredChart(labels, actual, predicted, cityLabel) {
-  const canvas = document.getElementById('predChart'); if (!canvas) return;
+  const canvas = document.getElementById('predChart');
+  if (!canvas) return;
   const ctx = canvas.getContext('2d');
   if (_predChart) _predChart.destroy();
 
@@ -582,18 +623,55 @@ function renderPredChart(labels, actual, predicted, cityLabel) {
     data: {
       labels,
       datasets: [
-        { label: `Aktual • ${cityLabel}`,   data: actual,    borderWidth: 2, tension: 0.25, pointRadius: 0 },
-        { label: `Prediksi • ${cityLabel}`, data: predicted, borderWidth: 2, tension: 0.25, pointRadius: 0 }
+        {
+          label: `Aktual • ${cityLabel}`,
+          data: actual,
+          borderWidth: 2,
+          tension: .25,            // <-- smooth ringan (seperti Matplotlib)
+          stepped: false,          // <-- DULUNYA 'before'
+          pointRadius: 0,
+          spanGaps: true           // gap di awal (hasil rolling) jangan dihubungkan
+        },
+        {
+          label: `Prediksi • ${cityLabel}`,
+          data: predicted,
+          borderWidth: 2,
+          tension: .25,
+          stepped: false,          // <-- DULUNYA 'before'
+          pointRadius: 0,
+          spanGaps: true,
+          borderDash: [6,6]        // opsional: biar keliatan dashed seperti plot
+        }
       ]
     },
     options: {
-      responsive: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: { title: { display: true, text: 'Aktual vs Prediksi (Gradient Boosting)' } },
-      scales: { x: { ticks: { autoSkip: true, maxTicksLimit: 12 } }, y: {} }
+      plugins: {
+        title: { display: true, text: 'Aktual vs Prediksi (Gradient Boosting)' },
+        forceXTicks: { count: 12 }
+      },
+      scales: {
+        x: {
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+            callback(value, index, ticks) {
+              const raw = this?.chart?.data?.labels?.[value] ?? (ticks?.[index]?.label ?? value);
+              if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+                const [y,m,d] = raw.split('-');
+                const mon = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][+m-1];
+                return `${d} ${mon}`;
+              }
+              return String(raw ?? '');
+            }
+          },
+          grid: { drawTicks: true }
+        },
+        y: { ticks: { count: 8 } }
+      }
     }
   });
 }
+
 function _renderPredSummary(labels, seriesPred){
   const box = document.getElementById('predSummary');
   if (!box) return;
@@ -677,11 +755,14 @@ async function loadPrediksi(){
     }
 
     document.querySelector('.nav-link[data-section="prediksi"]')?.click();
+    await fetchAndRenderEvalForCity(citySlug);
+
   } catch (e) {
-    console.error(e);
+    console.error(e);s
     ph.style.display = '';
     ph.innerHTML = `❌ Gagal memuat prediksi: <small>${e.message}</small>`;
   }
+
 }
 window.loadPrediksi = loadPrediksi;
 
@@ -1170,3 +1251,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // init pertama kali (pasti dipanggil setelah DOM siap)
   fillRcValueOptions();
 });
+
+function updateEvalCards(metrics) {
+  const fmt0 = x => (x==null || Number.isNaN(x)) ? '-' : new Intl.NumberFormat('id-ID').format(Math.round(x));
+  const fmt2 = x => (x==null || Number.isNaN(x)) ? '-' : Number(x).toFixed(2);
+
+  const mse  = metrics?.mse ?? null;
+  const rmse = metrics?.rmse ?? (mse!=null ? Math.sqrt(mse) : null);
+  const mape = metrics?.mape != null ? (metrics.mape * 100) : null; // asumsikan server kirim 0..1
+  const r2   = metrics?.r2 ?? null;
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('mseValue',  mse==null ? '-' : `Rp ${fmt0(mse)}`);
+  set('rmseValue', rmse==null ? '-' : `Rp ${fmt0(rmse)}`);
+  set('mapeValue', fmt2(mape));
+  set('r2Value',   r2==null ? '-' : Number(r2).toFixed(3));
+
+  // kalau pakai grade:
+  // const grade = r2==null ? '-' : (r2>=0.90?'A':r2>=0.85?'A-':r2>=0.80?'B+':r2>=0.75?'B':r2>=0.70?'B-':'C');
+  // set('performanceGrade', grade);
+}
+
+async function fetchAndRenderEvalForCity(city){
+  try{
+    const res = await fetch(`/api/eval_summary?city=${encodeURIComponent(city)}`);
+    if (!res.ok) throw 0;
+    const js = await res.json();
+    updateEvalCards(js?.metrics || {});
+  } catch {
+    updateEvalCards({});
+  }
+}
+
+
