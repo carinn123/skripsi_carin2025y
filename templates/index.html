@@ -36,17 +36,18 @@
 
   <!-- ====== NAV ====== -->
   <div class="container">
-    <header>
-      <nav>
-        <div class="logo">🛢️ PrediksiMinyak.id</div>
-        <ul class="nav-links">
-          <li><a href="#" class="nav-link active" data-section="beranda">Beranda</a></li>
-          <li><a href="#" class="nav-link" data-section="tren">Tinjauan Tren</a></li>
-          <li><a href="#" class="nav-link" data-section="prediksi">Prediksi</a></li>
-          <!-- <li><a href="#" class="nav-link" data-section="evaluasi">Evaluasi</a></li> -->
-        </ul>
-      </nav>
-    </header>
+    <header class="topbar">
+  <div class="wrap">
+    <div class="brand-inline">🛢️ PrediksiMinyak.id</div>
+    <nav class="top-nav">
+      <a href="#" class="nav-link active" data-section="beranda">Beranda</a>
+      <a href="#" class="nav-link" data-section="tren">Tinjauan Tren</a>
+      <a href="#" class="nav-link" data-section="prediksi">Prediksi</a>
+      <!-- <a href="#" class="nav-link" data-section="evaluasi">Evaluasi</a> -->
+      <!-- <span class="ink"></span>  optional; JS-mu sudah auto-bikin -->
+    </nav>
+  </div>
+</header>
 
     <!-- ====== BERANDA (MAP) ====== -->
     <div class="content-section active" id="beranda">
@@ -233,13 +234,16 @@
     <div class="input-group"><label for="endDate">Pilih Tanggal Akhir</label><input type="date" id="endDate"></div>
     <div class="input-group"><button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button></div>
   </div>
-
+  <div class="city-search" style="position:relative;max-width:480px">
+  <input id="citySearch" type="text" placeholder="Ketik kota… (mis. Bandung)" autocomplete="off">
+  <div id="citySuggestions" style="display:none;position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 8px 16px rgba(0,0,0,.08);max-height:320px;overflow:auto;z-index:20"></div>
+</div>
   <!-- GRAFIK PREDIKSI -->
   <div class="chart-container">
     <canvas id="predChart"></canvas>
     <div class="chart-placeholder" id="predPlaceholder">🔮 Pilih kab/kota …</div>
   </div>
-
+  
   <!-- RINGKASAN PREDIKSI (boleh tetap di-hide sampai ada data) -->
   <div class="stats-grid" id="predSummary" style="margin-top:1rem; display:none">
     <div class="stat-card">

@@ -1075,6 +1075,35 @@ def api_metrics():
 
     return jsonify({"city": slug, "entity": entity, "best_config": pack["config"], "metrics": pack["metrics"]})
 
+@app.route("/api/cities_search")
+def api_cities_search():
+    q = (request.args.get("q") or "").strip().lower()
+    try:
+        limit = int((request.args.get("limit") or "15").strip())
+    except:
+        limit = 15
+
+    source = CITY_COORDS if CITY_COORDS else {e: {} for e in ENTITIES}
+    items = []
+    for ent in source.keys():
+        meta  = CITY_COORDS.get(ent, {})
+        label = meta.get("label") or ent.replace("_", " ").title().replace("Kab. ", "Kabupaten ")
+        slug  = _normalize_to_slug(label)
+        items.append({"entity": ent, "slug": slug, "label": label})
+
+    if not q:
+        return jsonify(sorted(items, key=lambda x: x["label"].lower())[:limit])
+
+    def rank(it):
+        lab = it["label"].lower()
+        if lab.startswith(q): return (0, lab)   # depan cocok dulu
+        if q in lab:         return (1, lab)   # lalu contains
+        return (2, lab)
+
+    filtered = [it for it in items if it["label"].lower().startswith(q) or q in it["label"].lower()]
+    filtered.sort(key=rank)
+    return jsonify(filtered[:limit])
+
 
 @app.route("/api/predict_range")
 def api_predict_range():

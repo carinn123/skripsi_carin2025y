@@ -348,3 +348,50 @@ select, input, button{
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
 }
+
+/* ===== Dropdown Search (optimized) ===== */
+.dropdown-search { position: relative; width: 100%; }
+.btn-select{
+  width:100%; padding:.7rem .85rem; border:1.5px solid var(--line);
+  border-radius:10px; background:#fff; text-align:left; cursor:pointer;
+  font-size:.95rem; transition:border-color .2s, background .2s;
+}
+.btn-select:hover{ background:#f9fafb; border-color:#cbd5e1; }
+
+.dropdown-panel{
+  position:absolute; top:100%; left:0; right:0; margin-top:6px;
+  background:#fff; border:1px solid var(--line); border-radius:12px;
+  box-shadow:0 12px 28px rgba(17,24,39,.12); z-index:40; overflow:hidden;
+  /* anti-flicker */
+  will-change: transform, opacity; transform: translateZ(0);
+}
+.dropdown-head{ display:flex; align-items:center; gap:.5rem; padding:.5rem .6rem; border-bottom:1px solid #eee; }
+.dropdown-head input{
+  flex:1; padding:.55rem .7rem; border:1px solid #e5e7eb; border-radius:8px; outline:none;
+}
+.dropdown-head .meta{ color:var(--muted); font-size:.8rem; white-space:nowrap; }
+
+.dropdown-list{ max-height:320px; overflow:auto; -webkit-overflow-scrolling:touch; }
+.dropdown-item{
+  padding:.55rem .8rem; cursor:pointer; font-size:.92rem; line-height:1.35;
+  display:flex; align-items:center; gap:.5rem;
+}
+.dropdown-item:hover, .dropdown-item[aria-selected="true"]{ background:#F3F4F6; }
+.dropdown-item .sub{ color:var(--muted); font-size:.86em; margin-left:auto; }
+
+/* ===== FIX: dropdown jangan ketutup chart (stacking context) ===== */
+
+/* pastikan section prediksi boleh meluber */
+#prediksi { overflow: visible; position: relative; z-index: 1; }
+
+/* naikkan z-index area input dibanding chart */
+#prediksi .input-section { position: relative; z-index: 20; }
+
+/* chart ada tapi di layer lebih rendah */
+#prediksi .chart-container { position: relative; z-index: 1; }
+
+/* wrapper dropdown + panel di atas semuanya */
+#prediksi .dropdown-search { position: relative; z-index: 30; }
+
+/* panelnya sendiri super tinggi biar aman */
+#prediksi .dropdown-panel { z-index: 9999 !important; }

@@ -184,16 +184,7 @@ async function showMapBeranda(){
 window.showMapBeranda = showMapBeranda;
 
 
-// NAV (toggle section) — keep this one
-document.querySelectorAll('.nav-link').forEach(link=>{
-  link.addEventListener('click', e=>{
-    e.preventDefault();
-    document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
-    document.querySelectorAll('.content-section').forEach(s=>s.classList.remove('active'));
-    link.classList.add('active');
-    document.getElementById(link.getAttribute('data-section')).classList.add('active');
-  });
-});
+
 
 
 
@@ -758,11 +749,10 @@ async function loadPrediksi(){
     await fetchAndRenderEvalForCity(citySlug);
 
   } catch (e) {
-    console.error(e);s
-    ph.style.display = '';
-    ph.innerHTML = `❌ Gagal memuat prediksi: <small>${e.message}</small>`;
-  }
-
+  console.error(e);
+  ph.style.display = '';
+  ph.innerHTML = `❌ Gagal memuat prediksi: <small>${e.message}</small>`;
+}
 }
 window.loadPrediksi = loadPrediksi;
 
@@ -1282,5 +1272,158 @@ async function fetchAndRenderEvalForCity(city){
     updateEvalCards({});
   }
 }
+
+/* =========================
+   Dropdown Search Optimized
+   ========================= */
+(function dropdownKabupaten(){
+  const btn    = document.getElementById('kabupatenBtn');
+  const panel  = document.getElementById('kabupatenPanel');
+  const inp    = document.getElementById('kabupatenSearch');
+  const listEl = document.getElementById('kabupatenList');
+  const metaEl = document.getElementById('kabupatenMeta');
+  const hidden = document.getElementById('kabupaten_a');
+
+  if (!btn || !panel || !inp || !listEl || !hidden) return;
+
+  // --- 1) Ambil & cache data (sekali saja)
+  let cities = window.__CITIES_CACHE || null;
+  let lastRender = []; // untuk diff minimal
+  const MAX_RENDER = 200;          // batasi render supaya lincah
+  const DEBOUNCE_MS = 120;         // filter debounce
+
+  const norm = s => (s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+  const slugify = s => norm(s).replace(/\s+/g,'_').replace(/[^\w_]/g,'');
+
+  async function loadCities(){
+    if (cities) return cities;
+    try{
+      const r = await fetch('/api/cities_full', {cache:'no-store'});
+      const arr = await r.json();
+      cities = arr.map(x=>({
+        label: x.label || x.name,
+        slug : x.slug  || slugify(x.label || x.name),
+        prov : x.province || x.prov || '',
+        island: x.island || ''
+      }));
+    }catch{
+      const r2 = await fetch('/api/cities', {cache:'no-store'});
+      const arr2 = await r2.json();
+      cities = arr2.map(l=>({ label:l, slug:slugify(l), prov:'', island:'' }));
+    }
+    // Precompute utk cepat cari
+    cities.forEach(c=>{ c._l = norm(c.label); });
+    window.__CITIES_CACHE = cities;
+    return cities;
+  }
+
+  // --- 2) Filter cepat: prioritas startsWith, lalu includes; limit MAX_RENDER
+  function filterCities(q){
+    if (!q) return cities.slice(0, MAX_RENDER);
+    const n = norm(q);
+    const starts = [];
+    const contains = [];
+    for (const c of cities){
+      const i = c._l.indexOf(n);
+      if (i === 0) starts.push(c);
+      else if (i > 0) contains.push(c);
+      if (starts.length + contains.length >= MAX_RENDER) break;
+    }
+    return starts.concat(contains).slice(0, MAX_RENDER);
+  }
+
+  // --- 3) Render hemat (pakai DocumentFragment, no reflow besar)
+  function render(items){
+    // quick bail: kalau list sama (panjang & slug sama), jangan render ulang
+    if (items.length === lastRender.length && items.every((it, i)=> it.slug === lastRender[i].slug)) return;
+
+    const frag = document.createDocumentFragment();
+    for (const c of items){
+      const div = document.createElement('div');
+      div.className = 'dropdown-item';
+      div.setAttribute('role', 'option');
+      div.dataset.slug = c.slug;
+      div.innerHTML = `<span>${c.label}</span>${c.prov ? `<span class="sub">${c.prov}</span>` : ''}`;
+      frag.appendChild(div);
+    }
+    listEl.innerHTML = '';
+    listEl.appendChild(frag);
+    metaEl.textContent = `${items.length} hasil`;
+    lastRender = items;
+  }
+
+  // --- 4) Open/close tanpa kedip
+  let insidePointer = false;
+  function openPanel(){
+    if (panel.style.display === 'block') return;
+    panel.style.display = 'block';
+    btn.setAttribute('aria-expanded','true');
+    // fokus setelah terbuka
+    setTimeout(()=> inp.focus(), 0);
+  }
+  function closePanel(){
+    if (panel.style.display === 'none') return;
+    panel.style.display = 'none';
+    btn.setAttribute('aria-expanded','false');
+  }
+
+  btn.addEventListener('click', async ()=>{
+    if (panel.style.display === 'block'){ closePanel(); return; }
+    await loadCities();
+    render(cities.slice(0, MAX_RENDER));
+    openPanel();
+  });
+
+  // cegah close saat scroll/klik di dalam panel
+  panel.addEventListener('pointerdown', ()=>{ insidePointer = true; }, {passive:true});
+  document.addEventListener('pointerdown', (e)=>{
+    if (insidePointer){ insidePointer = false; return; }
+    if (!panel.contains(e.target) && e.target !== btn) closePanel();
+  });
+
+  // --- 5) Debounced search (supaya gak “bergetar”)
+  let t = null;
+  inp.addEventListener('input', ()=>{
+    clearTimeout(t);
+    const q = inp.value.trim();
+    t = setTimeout(()=>{
+      const items = filterCities(q);
+      render(items);
+    }, DEBOUNCE_MS);
+  });
+
+  // --- 6) Pilih item (pakai mousedown supaya gak kehilangan fokus saat click)
+  listEl.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.dropdown-item');
+    if (!item) return;
+    e.preventDefault(); // biar gak trigger blur/close duluan
+    const slug = item.dataset.slug;
+    const label = item.querySelector('span')?.textContent || item.textContent;
+    hidden.value = slug;
+    btn.textContent = label;
+    closePanel();
+  });
+
+  // --- 7) Keyboard nav (↑/↓/Enter/Esc)
+  let activeIdx = -1;
+  function highlight(idx){
+    const nodes = listEl.querySelectorAll('.dropdown-item');
+    nodes.forEach(n=> n.removeAttribute('aria-selected'));
+    if (idx >=0 && idx < nodes.length){
+      nodes[idx].setAttribute('aria-selected','true');
+      nodes[idx].scrollIntoView({block:'nearest'});
+    }
+  }
+  inp.addEventListener('keydown', (e)=>{
+    const nodes = listEl.querySelectorAll('.dropdown-item');
+    if (e.key === 'ArrowDown'){ e.preventDefault(); activeIdx = Math.min(nodes.length-1, activeIdx+1); highlight(activeIdx); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); activeIdx = Math.max(0, activeIdx-1); highlight(activeIdx); }
+    else if (e.key === 'Enter'){ e.preventDefault(); if (activeIdx>=0 && nodes[activeIdx]) nodes[activeIdx].dispatchEvent(new MouseEvent('mousedown')); }
+    else if (e.key === 'Escape'){ closePanel(); btn.focus(); }
+  });
+
+  // preload ringan (biar cepat saat pertama kali klik)
+  loadCities();
+})();
 
 

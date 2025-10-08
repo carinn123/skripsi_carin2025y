@@ -51,7 +51,7 @@
         <a href="#" class="nav-link active" data-section="beranda">🏠 Beranda</a>
         <a href="#" class="nav-link" data-section="tren">📈 Tinjauan Tren</a>
         <a href="#" class="nav-link" data-section="prediksi">🔮 Prediksi</a>
-        <a href="#" class="nav-link" data-section="evaluasi">🧪 Evaluasi</a>
+        <!-- <a href="#" class="nav-link" data-section="evaluasi">🧪 Evaluasi</a> -->
       </nav>
     </div>
   </header>
@@ -357,37 +357,69 @@
 
 
       <!-- ====== PREDIKSI ====== -->
-      <!-- ====== PREDIKSI ====== -->
-      <div class="content-section" id="prediksi">
-    <h2 class="section-title">Prediksi Harga Minyak Goreng</h2>
+     <!-- ====== PREDIKSI ====== -->
+<!-- ====== PREDIKSI ====== -->
+<div class="content-section" id="prediksi">
+  <h2 class="section-title">Prediksi Harga Minyak Goreng</h2>
 
-    <div class="input-section">
-      <div class="input-row">
-        <div class="input-group" style="flex:2">
-          <label for="kabupaten_a">Kab/Kota</label>
-          <select id="kabupaten_a"><option value="">-- Pilih Kabupaten/Kota --</option></select>
+  <div class="input-section">
+    <div class="input-row">
+
+      <!-- Dropdown + search (tanpa ubah fungsi) -->
+      <div class="input-group" style="flex:2; position:relative;">
+        <label for="kabupaten_a">Kab/Kota</label>
+
+        <div class="dropdown-search" id="kabupatenDropdown">
+          <button type="button" class="btn-select" id="kabupatenBtn" aria-expanded="false">
+            -- Pilih Kabupaten/Kota --
+          </button>
+
+          <div class="dropdown-panel" id="kabupatenPanel" role="listbox" style="display:none;">
+            <div class="dropdown-head">
+              <input type="text" id="kabupatenSearch" placeholder="Ketik untuk mencari…" autocomplete="off" />
+              <small id="kabupatenMeta" class="meta">0 hasil</small>
+            </div>
+            <div class="dropdown-list" id="kabupatenList"></div>
+          </div>
         </div>
-        <div class="input-group">
-          <label for="startDate">Tanggal Mulai</label>
-          <input type="date" id="startDate">
-        </div>
-        <div class="input-group">
-          <label for="endDate">Tanggal Akhir</label>
-          <input type="date" id="endDate">
-        </div>
-        <div class="input-group">
-          <button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button>
-        </div>
+
+        <!-- nilai slug yang dipakai loadPrediksi() -->
+        <input type="hidden" id="kabupaten_a" />
       </div>
-    </div>
 
-    <div class="chart-container">
-      <canvas id="predChart"></canvas>
-      <div class="chart-placeholder" id="predPlaceholder">
-        🔮 Pilih satu kabupaten/kota, tentukan tanggal mulai & akhir, lalu klik <b>Lihat Prediksi</b>.
+      <div class="input-group">
+        <label for="startDate">Tanggal Mulai</label>
+        <input type="date" id="startDate">
+      </div>
+
+      <div class="input-group">
+        <label for="endDate">Tanggal Akhir</label>
+        <input type="date" id="endDate">
+      </div>
+
+      <div class="input-group">
+        <button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button>
       </div>
     </div>
   </div>
+
+  <!-- GRAFIK -->
+  <div class="chart-container">
+    <canvas id="predChart"></canvas>
+    <div class="chart-placeholder" id="predPlaceholder">
+      🔮 Pilih satu kabupaten/kota, tentukan tanggal mulai & akhir, lalu klik <b>Lihat Prediksi</b>.
+    </div>
+  </div>
+
+  <!-- RINGKASAN -->
+  <div class="stats-grid" id="predSummary" style="margin-top:1rem; display:none">
+    <div class="stat-card"><div class="stat-value" id="predMaxVal">-</div><div class="stat-label">Prediksi Tertinggi</div><small id="predMaxDate" class="muted">—</small></div>
+    <div class="stat-card"><div class="stat-value" id="predMinVal">-</div><div class="stat-label">Prediksi Terendah</div><small id="predMinDate" class="muted">—</small></div>
+    <div class="stat-card"><div class="stat-value" id="predAvgVal">-</div><div class="stat-label">Rata-rata Prediksi</div><small id="predCount" class="muted">—</small></div>
+    <div class="stat-card"><div class="stat-value" id="predChangePct">-</div><div class="stat-label">Perubahan (%)</div><small id="predChangeNote" class="muted">—</small></div>
+  </div>
+</div>
+
 
 
       <!-- ====== EVALUASI ====== -->
