@@ -3,12 +3,16 @@ import os, json, warnings, re
 from pathlib import Path
 from datetime import datetime
 import numpy as np
-import pandas as pd
+import pandas as pd, time
 from flask import Flask, request, jsonify, send_from_directory, abort, render_template
 from flask_cors import CORS
 import joblib
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import math
-
+from sklearn.model_selection import GridSearchCV, TimeSeriesSplit, TimeSeriesSplit
+from sklearn.ensemble import HistGradientBoostingRegressor as HGBR
+import traceback
+from io import StringIO
 
 # =======================
 # KONFIGURASI DASAR
@@ -118,6 +122,362 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(seconds=0)
 
 # ===== Kalender flags sederhana (SAMAKAN dengan training) =====
 EID_DATES = ["2020-05-24","2021-05-13","2022-05-02","2023-04-22","2024-04-10","2025-03-31"]
+
+
+import joblib, time
+from dataclasses import dataclass
+
+# local fallbacks (use global if defined)
+UPLOAD_TEST_DAYS = globals().get("TEST_DAYS", 365)
+UPLOAD_PARAM_GRID = globals().get("PARAM_GRID", {
+    "learning_rate": [0.05, 0.01],
+    "max_depth": [1, 2],
+    "max_iter": [150],
+    "l2_regularization": [0.0],
+    "min_samples_leaf": [10]
+})
+UPLOAD_FEATURE_EXPS = globals().get("FEATURE_EXPERIMENTS", [
+    {"name":"lag1","LAGS":[],"ROLLS":[]},
+    {"name":"lag7","LAGS":[7],"ROLLS":[]},
+    {"name":"lag30","LAGS":[30],"ROLLS":[]}
+])
+UPLOAD_EID_DATES = globals().get("EID_DATES", ["2020-05-24","2021-05-13","2022-05-02","2023-04-22","2024-04-10","2025-03-31"])
+UPLOAD_OUTDIR = Path("./models_packs_uploads")
+UPLOAD_OUTDIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_N_SPLITS = globals().get("N_SPLITS_CV", 3)
+UPLOAD_SEED = globals().get("SEED", 42)
+UPLOAD_EARLY_STOP = globals().get("EARLY_STOP_KW", dict(early_stopping=True, validation_fraction=0.15, n_iter_no_change=20))
+
+# local helper to avoid relying on global ensure_dir
+def upload_ensure_dir(p: Path):
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+# small feature cfg for upload
+@dataclass
+class upload_FeatureCfg:
+    add_lags: list
+    rolls: list
+
+# simple calendar flags (upload-local)
+def upload_make_flags(idx):
+    di = pd.DatetimeIndex(pd.to_datetime(idx, errors="coerce")).tz_localize(None).normalize()
+    f = pd.DataFrame(index=di)
+    f["month"] = di.month
+    f["dayofweek"] = di.dayofweek
+    f["time_index"] = (di - di.min()).days
+    f["is_end_of_year"] = ((di.month == 12) & (di.day >= 22)).astype(int)
+    f["is_new_year"] = ((di.month == 1) & (di.day <= 7)).astype(int)
+    eid = np.zeros(len(di), dtype=int)
+    for d in UPLOAD_EID_DATES:
+        t = pd.Timestamp(d)
+        eid |= ((di >= t - pd.Timedelta(days=14)) & (di <= t + pd.Timedelta(days=7))).astype(int)
+    f["is_eid_window"] = eid
+    return f
+
+def upload_build_features_level_target(y: pd.Series, cfg: upload_FeatureCfg):
+    y = pd.Series(pd.to_numeric(y, errors="coerce"), index=pd.DatetimeIndex(y.index)).astype(float)
+    X = pd.DataFrame(index=y.index)
+    X["lag_1"] = y.shift(1)
+    for L in (cfg.add_lags or []):
+        if L == 1: continue
+        X[f"lag_{L}"] = y.shift(L)
+    for W in (cfg.rolls or []):
+        X[f"rollmean_{W}"] = y.shift(1).rolling(W, min_periods=max(1, W//2)).mean()
+    X = X.join(upload_make_flags(X.index))
+    df = pd.concat([X, y.rename("y")], axis=1).dropna()
+    y_target = df.pop("y")
+    return df, y_target
+
+def upload_build_feature_row_for_date(feature_cols, history_series: pd.Series, target_date: pd.Timestamp):
+    idx_min = history_series.index.min()
+    row = {}
+    for col in feature_cols:
+        if col.startswith('lag_'):
+            L = int(col.split('_')[1])
+            lookup = target_date - pd.Timedelta(days=L)
+            row[col] = float(history_series.loc[lookup]) if lookup in history_series.index else float(history_series.iloc[-1])
+        elif col.startswith('rollmean_'):
+            W = int(col.split('_')[1])
+            end = target_date - pd.Timedelta(days=1)
+            window = history_series.loc[:end].iloc[-W:] if len(history_series.loc[:end])>0 else history_series.iloc[-W:]
+            row[col] = float(window.mean()) if len(window)>0 else float(history_series.iloc[-1])
+        else:
+            flags = upload_make_flags([target_date]).iloc[0].to_dict()
+            row[col] = flags.get(col, 0)
+    return row
+
+def upload_iterative_forecast_from_pack(pack: dict, series: pd.Series, horizons=[1,7,10]):
+    model = pack['model']
+    feature_cols = pack['feature_cols']
+    last_date = series.index.max()
+    history = series.copy().astype(float)
+    max_h = max(horizons)
+    preds = {}
+    for step in range(1, max_h+1):
+        target_date = last_date + pd.Timedelta(days=step)
+        row = upload_build_feature_row_for_date(feature_cols, history, target_date)
+        Xrow = pd.DataFrame([row], columns=feature_cols)
+        # align columns to model if possible
+        if hasattr(model, "feature_names_in_"):
+            for c in model.feature_names_in_:
+                if c not in Xrow.columns:
+                    Xrow[c] = 0.0
+            Xrow = Xrow.reindex(columns=list(model.feature_names_in_), fill_value=0.0)
+        yhat = float(model.predict(Xrow)[0])
+        history.loc[target_date] = yhat
+        if step in horizons:
+            preds[str(step)] = {'date': target_date.strftime('%Y-%m-%d'), 'value': yhat}
+    return preds
+
+# training wrapper (upload-local)
+def upload_train_one_city(series_full: pd.Series, city_name: str, outdir: Path, test_days=None):
+    """
+    Train model untuk satu kota dari series harga harian.
+    Sekarang: test_days otomatis = 20% dari panjang data (dibulatkan ke atas), minimal 7 hari.
+    """
+
+    n_total = len(series_full.dropna())
+
+    # === Tentukan test_days otomatis (20% dibulatkan ke atas, min=7)
+    if test_days is None:
+        test_days = max(7, int(np.ceil(n_total * 0.2)))
+
+    # Jika test_days terlalu besar, kurangi jadi max 40% data
+    if test_days >= n_total * 0.4:
+        test_days = int(np.floor(n_total * 0.3))
+
+    print(f"[TRAIN] {city_name}: total={n_total}, test_days={test_days}")
+
+    # === Validasi panjang data
+    if len(series_full) <= test_days + 50:
+        return {
+            "city": city_name,
+            "ok": False,
+            "reason": f"series too short (len={len(series_full)}, need>{test_days + 200})",
+            "n": int(len(series_full))
+        }
+
+    best_record = {
+        "r2": -1e9,
+        "exp_name": None,
+        "model": None,
+        "feature_cols": None,
+        "metrics": None
+    }
+
+    # === Loop fitur eksperimen ===
+    for exp in UPLOAD_FEATURE_EXPS:
+        add_lags = exp["LAGS"]
+        rolls = exp["ROLLS"]
+        exp_name = exp["name"]
+
+        X_all, y_all = upload_build_features_level_target(
+            series_full,
+            upload_FeatureCfg(add_lags=add_lags, rolls=rolls)
+        )
+
+        if len(X_all) <= test_days + 50:
+            print(f"[SKIP] {city_name} • {exp_name}: data < test_days+50 ({len(X_all)})")
+            continue
+
+        # Split train-test
+        X_train, X_test = X_all.iloc[:-test_days], X_all.iloc[-test_days:]
+        y_train, y_test = y_all.iloc[:-test_days], y_all.iloc[-test_days:]
+
+        max_lookback = int(max([1, *add_lags, *(rolls or [0])]))
+
+        try:
+            tscv = TimeSeriesSplit(n_splits=UPLOAD_N_SPLITS, gap=max_lookback)
+        except TypeError:
+            tscv = TimeSeriesSplit(n_splits=UPLOAD_N_SPLITS)
+
+        base = HGBR(loss="squared_error", random_state=UPLOAD_SEED, **UPLOAD_EARLY_STOP)
+        gs = GridSearchCV(
+            estimator=base,
+            param_grid=UPLOAD_PARAM_GRID,
+            scoring="r2",
+            refit=True,
+            cv=tscv,
+            n_jobs=1,
+            verbose=0
+        )
+
+        print(f"[GRIDSEARCH] {city_name} • {exp_name}: training {len(X_train)} / testing {len(X_test)} ...")
+        t0 = time.perf_counter()
+        gs.fit(X_train, y_train)
+        train_secs = time.perf_counter() - t0
+
+        best_model = gs.best_estimator_
+        y_pred = best_model.predict(X_test)
+
+        r2_val = float(r2_score(y_test, y_pred))
+        mae_val = float(mean_absolute_error(y_test, y_pred))
+
+        metrics = dict(
+            city=city_name,
+            exp=exp_name,
+            lags=[1, *add_lags],
+            rolls=rolls,
+            r2=r2_val,
+            mae=mae_val,
+            cv_best_r2=float(gs.best_score_),
+            train_time_seconds=float(train_secs),
+            best_params=gs.best_params_
+        )
+
+        print(f"[RESULT] {city_name} • {exp_name}: R²={r2_val:.3f}, MAE={mae_val:.1f}, best={gs.best_params_}")
+
+        if r2_val > best_record["r2"]:
+            best_record.update(
+                r2=r2_val,
+                exp_name=exp_name,
+                model=best_model,
+                feature_cols=list(X_train.columns),
+                metrics=metrics
+            )
+
+    # === Jika tidak ada model terbaik ditemukan
+    if best_record["model"] is None:
+        return {
+            "city": city_name,
+            "ok": False,
+            "reason": "no model found (semua eksperimen gagal)",
+            "n": int(len(series_full))
+        }
+
+    # === Simpan model terbaik
+    city_safe = city_name.replace("/", "-").replace("\\", "-").replace(" ", "_")[:180]
+    best_dir = upload_ensure_dir(outdir / city_safe / "best_model")
+    pack = {
+        "model": best_record["model"],
+        "feature_cols": best_record["feature_cols"],
+        "best_config": {"exp_name": best_record["exp_name"]},
+        "metrics": best_record["metrics"]
+    }
+
+    pack_path = best_dir / f"{city_safe}__{best_record['exp_name']}__best_pack.joblib"
+    joblib.dump(pack, pack_path)
+
+    preds = upload_iterative_forecast_from_pack(pack, series_full, horizons=[1, 7, 10])
+
+    return {
+        "city": city_name,
+        "ok": True,
+        "best_r2": float(best_record["r2"]),
+        "pack_path": str(pack_path),
+        "predictions": preds,
+        "metrics": best_record["metrics"],
+        "test_days": test_days,
+        "n_total": n_total
+    }
+
+
+# route
+@app.route("/api/upload_file", methods=["POST"])
+def upload_file_endpoint():
+    # debug helper: return traceback when exception occurs
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file"}), 400
+        f = request.files['file']
+        mode = request.form.get('mode', 'full').lower()
+
+        # read file robustly and report errors
+        try:
+            fname = (f.filename or "").lower()
+            if fname.endswith(".csv"):
+                df = pd.read_csv(f)
+            else:
+                # openpyxl needed for .xlsx; this may raise if not installed or bad file
+                df = pd.read_excel(f, engine="openpyxl")
+        except Exception as e:
+            tb = traceback.format_exc()
+            print("[UPLOAD READ ERROR]", tb)
+            return jsonify({"error": "read error", "detail": str(e), "trace": tb}), 400
+
+        # validate date column
+        if df.shape[1] == 0:
+            return jsonify({"error": "Empty file or no columns read"}), 400
+
+        if df.columns[0].lower() != 'date':
+            df = df.rename(columns={df.columns[0]: 'date'})
+        try:
+            df['date'] = pd.to_datetime(df['date'])
+        except Exception as e:
+            tb = traceback.format_exc()
+            print("[DATE PARSE ERROR]", tb)
+            return jsonify({"error": "date parse error", "detail": str(e), "trace": tb}), 400
+
+        df = df.sort_values('date').reset_index(drop=True)
+
+        # collect non-empty value columns
+        value_cols = [c for c in df.columns if c.lower() != 'date' and not df[c].dropna().empty]
+        if not value_cols:
+            return jsonify({"error": "No valid city/value columns found"}), 400
+
+        # choose first column (for now)
+        col = value_cols[0]
+        series_full = (
+            pd.Series(pd.to_numeric(df[col], errors='coerce').values, index=pd.DatetimeIndex(df['date']))
+            .asfreq('D')
+            .ffill().bfill()
+        )
+
+        print(f"[UPLOAD] city={col}, mode={mode}, len={len(series_full)}")
+
+        # QUICK mode: no training heavy (safe for debugging)
+        if mode == 'quick':
+            s = series_full.dropna()
+            stats = {
+                'n_points': int(s.shape[0]),
+                'avg': float(s.mean()) if len(s)>0 else None,
+                'min': float(s.min()) if len(s)>0 else None,
+                'max': float(s.max()) if len(s)>0 else None
+            }
+            last_date = series_full.index.max()
+            preds = {
+                '1': {'date': (last_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d'), 'value': float(series_full.iloc[-1])},
+                '7': {'date': (last_date + pd.Timedelta(days=7)).strftime('%Y-%m-%d'),
+                       'value': float(series_full.shift(1).rolling(7, min_periods=1).mean().iloc[-1])},
+                '30': {'date': (last_date + pd.Timedelta(days=30)).strftime('%Y-%m-%d'),
+                       'value': float(series_full.shift(1).rolling(30, min_periods=1).mean().iloc[-1])},
+            }
+            if len(s) > 180: s = s.iloc[-180:]
+            trend = {'dates': [d.strftime('%Y-%m-%d') for d in s.index], 'values': [float(x) for x in s.values]}
+            pred_series = {'dates': trend['dates'], 'actual': trend['values'], 'pred': [None] + trend['values'][:-1]}
+            return jsonify({'mode': 'quick', 'column': col, 'stats': stats, 'predictions': preds, 'trend': trend, 'pred_series': pred_series})
+
+        # FULL training path (wrap in try and return trace on error)
+        try:
+            res = upload_train_one_city(series_full, col, UPLOAD_OUTDIR)
+        except Exception as e:
+            tb = traceback.format_exc()
+            print("[TRAIN ERROR]", tb)
+            return jsonify({"error": "train error", "detail": str(e), "trace": tb}), 500
+
+        if not res.get("ok"):
+            return jsonify({"error": res.get("reason", "train failed"), "detail": res}), 400
+
+        s = series_full.dropna()
+        stats = {'n_points': int(s.shape[0]), 'avg': float(s.mean()), 'min': float(s.min()), 'max': float(s.max())}
+        if len(s) > 180: s = s.iloc[-180:]
+        trend = {'dates': [d.strftime('%Y-%m-%d') for d in s.index], 'values': [float(x) for x in s.values]}
+
+        return jsonify({
+            'mode': 'full',
+            'city': col,
+            'stats': stats,
+            'predictions': res.get('predictions'),
+            'metrics': res.get('metrics'),
+            'trend': trend,
+            'best_r2': res.get('best_r2'),
+            'pack_path': res.get('pack_path')
+        })
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("[UPLOAD ENDPOINT ERROR]", tb)
+        return jsonify({"error": "unexpected server error", "detail": str(e), "trace": tb}), 500
 
 def _make_calendar_flags(idx: pd.DatetimeIndex) -> pd.DataFrame:
     f = pd.DataFrame(index=idx)
@@ -265,6 +625,7 @@ def make_flags(idx) -> pd.DataFrame:
         eid |= ((di >= t - pd.Timedelta(days=14)) & (di <= t + pd.Timedelta(days=7))).astype(int)
     f["is_eid_window"] = eid
     return f
+
 
 
 def make_features_entity(dfe: pd.DataFrame, horizon=1):
@@ -1579,9 +1940,15 @@ def api_region_summary():
     except Exception as e:
         return jsonify({"error": f"Gagal memproses: {e}"}), 500
 
+
+
+
+# ---------- route ----------
+
 # =======================
 # MAIN
 # =======================
 if __name__ == "__main__":
     print(">> Starting server on http://localhost:5000")
     app.run(host="0.0.0.0", port=5000, debug=True)
+

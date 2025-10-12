@@ -1,13 +1,27 @@
 // ===== NAV (toggle section) =====
-document.querySelectorAll('.nav-link').forEach(link=>{
-  link.addEventListener('click',e=>{
-    e.preventDefault();
-    document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
-    document.querySelectorAll('.content-section').forEach(s=>s.classList.remove('active'));
-    link.classList.add('active');
-    document.getElementById(link.getAttribute('data-section')).classList.add('active');
-  });
-});
+// ===== NAV (toggle section) =====
+// document.querySelectorAll('.nav-link').forEach(link=>{
+//   link.addEventListener('click', e=>{
+//     e.preventDefault();
+//     const targetId = link.getAttribute('data-section');
+//     if (!targetId) return;
+
+//     document.querySelectorAll('.nav-link').forEach(l=> l.classList.remove('active'));
+//     document.querySelectorAll('.content-section').forEach(s=> s.classList.remove('active'));
+
+//     link.classList.add('active');
+//     const section = document.getElementById(targetId);
+//     if (section) {
+//       section.classList.add('active');
+//       section.scrollIntoView({ behavior:'smooth', block:'start' });
+//     }
+
+//     // khusus: kalau klik upload, panggil loadUpload()
+//     if (targetId === 'upload' && typeof window.loadUpload === 'function') {
+//       try { window.loadUpload(); } catch(e){ console.error(e); }
+//     }
+//   });
+// });
 
 document.getElementById('scroll-to-beranda')
   ?.addEventListener('click', ()=>{
@@ -32,6 +46,35 @@ const fmtNum = (x, dec=0) =>
   new Intl.NumberFormat('id-ID', { maximumFractionDigits: dec, minimumFractionDigits: dec }).format(x);
 
 function normProv(s){return (s||"").toString().toLowerCase().replace(/provinsi|propinsi|prov\./g,"").replace(/\s+/g,"").replace(/[^\w]/g,"");}
+
+// --- replace existing fetchJsonSafe with this robust helper ---
+async function fetchJsonSafe(url, opts) {
+  const r = await fetch(url, opts);
+  const status = r.status;
+  let text = null;
+  try {
+    text = await r.text();
+  } catch (e) {
+    text = null;
+  }
+
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = null;
+    }
+  }
+
+  return {
+    ok: r.ok,
+    status,
+    data,   // parsed JSON or null
+    text    // raw text (useful for debugging HTML errors)
+  };
+}
+
 function fillSelect(selectId,records){
   const sel=document.getElementById(selectId); if(!sel) return;
   const firstOption = sel.querySelector('option[value=""]');
@@ -491,20 +534,6 @@ function fullDateRange(start,end){
 const VIZ_ROLL = 30; // rolling non-centered, min_periods≈15 (server)
 
 // ...
-async function fetchPredictRange(citySlug, startISO, endISO) {
-  const params = new URLSearchParams({
-    city: citySlug,
-    start: startISO,
-    end: endISO,
-    future_only: '0',
-    hide_actual: '0',
-    naive_fallback: '1',
-    viz_roll: String(VIZ_ROLL)   // <-- DULUNYA '0'
-  });
-  const r = await fetch(`/api/predict_range?${params.toString()}`);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
 
 function _niceDate(idStr){
   // idStr 'YYYY-MM-DD' -> 'DD MMM YYYY'
@@ -703,11 +732,177 @@ function _renderPredSummaryFromServer(s){
   document.getElementById('predChangeNote').textContent =
     (s.start!=null && s.end!=null) ? `${fmt(s.start)} → ${fmt(s.end)}` : '—';
 }
+async function fetchPredictRange(citySlug, startISO, endISO) {
+  const params = new URLSearchParams({
+    city: citySlug,
+    start: startISO,
+    end: endISO,
+    future_only: '0',
+    hide_actual: '0',
+    naive_fallback: '1',
+    viz_roll: String(VIZ_ROLL)   // <-- DULUNYA '0'
+  });
+  const r = await fetch(`/api/predict_range?${params.toString()}`);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+(function dropdownKabupaten(){
+  const btn    = document.getElementById('kabupatenBtn');
+  const panel  = document.getElementById('kabupatenPanel');
+  const inp    = document.getElementById('kabupatenSearch');
+  const listEl = document.getElementById('kabupatenList');
+  const metaEl = document.getElementById('kabupatenMeta');
+  const hidden = document.getElementById('kabupaten_a');
+
+  if (!btn || !panel || !inp || !listEl || !hidden) return;
+
+  // --- 1) Ambil & cache data (sekali saja)
+  let cities = window.__CITIES_CACHE || null;
+  let lastRender = []; // untuk diff minimal
+  const MAX_RENDER = 200;          // batasi render supaya lincah
+  const DEBOUNCE_MS = 120;         // filter debounce
+
+  const norm = s => (s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+  const slugify = s => norm(s).replace(/\s+/g,'_').replace(/[^\w_]/g,'');
+
+  async function loadCities(){
+    if (cities) return cities;
+    try{
+      const r = await fetch('/api/cities_full', {cache:'no-store'});
+      const arr = await r.json();
+      cities = arr.map(x=>({
+        label: x.label || x.name,
+        slug : x.slug  || slugify(x.label || x.name),
+        prov : x.province || x.prov || '',
+        island: x.island || ''
+      }));
+    }catch{
+      const r2 = await fetch('/api/cities', {cache:'no-store'});
+      const arr2 = await r2.json();
+      cities = arr2.map(l=>({ label:l, slug:slugify(l), prov:'', island:'' }));
+    }
+    // Precompute utk cepat cari
+    cities.forEach(c=>{ c._l = norm(c.label); });
+    window.__CITIES_CACHE = cities;
+    return cities;
+  }
+
+  // --- 2) Filter cepat: prioritas startsWith, lalu includes; limit MAX_RENDER
+  function filterCities(q){
+    if (!q) return cities.slice(0, MAX_RENDER);
+    const n = norm(q);
+    const starts = [];
+    const contains = [];
+    for (const c of cities){
+      const i = c._l.indexOf(n);
+      if (i === 0) starts.push(c);
+      else if (i > 0) contains.push(c);
+      if (starts.length + contains.length >= MAX_RENDER) break;
+    }
+    return starts.concat(contains).slice(0, MAX_RENDER);
+  }
+
+  // --- 3) Render hemat (pakai DocumentFragment, no reflow besar)
+  function render(items){
+    // quick bail: kalau list sama (panjang & slug sama), jangan render ulang
+    if (items.length === lastRender.length && items.every((it, i)=> it.slug === lastRender[i].slug)) return;
+
+    const frag = document.createDocumentFragment();
+    for (const c of items){
+      const div = document.createElement('div');
+      div.className = 'dropdown-item';
+      div.setAttribute('role', 'option');
+      div.dataset.slug = c.slug;
+      div.innerHTML = `<span>${c.label}</span>${c.prov ? `<span class="sub">${c.prov}</span>` : ''}`;
+      frag.appendChild(div);
+    }
+    listEl.innerHTML = '';
+    listEl.appendChild(frag);
+    metaEl.textContent = `${items.length} hasil`;
+    lastRender = items;
+  }
+
+  // --- 4) Open/close tanpa kedip
+  let insidePointer = false;
+  function openPanel(){
+    if (panel.style.display === 'block') return;
+    panel.style.display = 'block';
+    btn.setAttribute('aria-expanded','true');
+    // fokus setelah terbuka
+    setTimeout(()=> inp.focus(), 0);
+  }
+  function closePanel(){
+    if (panel.style.display === 'none') return;
+    panel.style.display = 'none';
+    btn.setAttribute('aria-expanded','false');
+  }
+
+  btn.addEventListener('click', async ()=>{
+    if (panel.style.display === 'block'){ closePanel(); return; }
+    await loadCities();
+    render(cities.slice(0, MAX_RENDER));
+    openPanel();
+  });
+
+  // cegah close saat scroll/klik di dalam panel
+  panel.addEventListener('pointerdown', ()=>{ insidePointer = true; }, {passive:true});
+  document.addEventListener('pointerdown', (e)=>{
+    if (insidePointer){ insidePointer = false; return; }
+    if (!panel.contains(e.target) && e.target !== btn) closePanel();
+  });
+
+  // --- 5) Debounced search (supaya gak “bergetar”)
+  let t = null;
+  inp.addEventListener('input', ()=>{
+    clearTimeout(t);
+    const q = inp.value.trim();
+    t = setTimeout(()=>{
+      const items = filterCities(q);
+      render(items);
+    }, DEBOUNCE_MS);
+  });
+
+  // --- 6) Pilih item (pakai mousedown supaya gak kehilangan fokus saat click)
+  listEl.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.dropdown-item');
+    if (!item) return;
+    e.preventDefault(); // biar gak trigger blur/close duluan
+    const slug = item.dataset.slug;
+    const label = item.querySelector('span')?.textContent || item.textContent;
+    hidden.value = slug;
+    btn.textContent = label;
+    closePanel();
+  });
+
+  // --- 7) Keyboard nav (↑/↓/Enter/Esc)
+  let activeIdx = -1;
+  function highlight(idx){
+    const nodes = listEl.querySelectorAll('.dropdown-item');
+    nodes.forEach(n=> n.removeAttribute('aria-selected'));
+    if (idx >=0 && idx < nodes.length){
+      nodes[idx].setAttribute('aria-selected','true');
+      nodes[idx].scrollIntoView({block:'nearest'});
+    }
+  }
+  inp.addEventListener('keydown', (e)=>{
+    const nodes = listEl.querySelectorAll('.dropdown-item');
+    if (e.key === 'ArrowDown'){ e.preventDefault(); activeIdx = Math.min(nodes.length-1, activeIdx+1); highlight(activeIdx); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); activeIdx = Math.max(0, activeIdx-1); highlight(activeIdx); }
+    else if (e.key === 'Enter'){ e.preventDefault(); if (activeIdx>=0 && nodes[activeIdx]) nodes[activeIdx].dispatchEvent(new MouseEvent('mousedown')); }
+    else if (e.key === 'Escape'){ closePanel(); btn.focus(); }
+  });
+
+  // preload ringan (biar cepat saat pertama kali klik)
+  loadCities();
+})();
 
 async function loadPrediksi(){
   // fallback ke #kabupaten kalau #kabupaten_a tidak ada
-  const sel = document.getElementById('kabupaten_a') || document.getElementById('kabupaten');
-  const citySlug = selectedSlugOrLabel(sel);
+  console.log("loadPrediksi called");
+  // const sel = document.getElementById('citySearch') || document.getElementById('kabupaten');
+  const hidden = document.getElementById('kabupaten_a');
+  const citySlug =hidden ? hidden.value : '';
   const start = document.getElementById('startDate').value;
   const end   = document.getElementById('endDate').value;
   const ph = document.getElementById('predPlaceholder');
@@ -911,20 +1106,6 @@ function renderEvaluasiChart(labels, actualAvg, predAvg, title){
 
 // boot
 initCities();
-/* =========================================================
-   FUTURISTIC UI ENHANCEMENTS (append-only; non-breaking)
-   ========================================================= */
-
-/* 0) Smooth nav switch (kode lama kamu sudah handle active state) */
-document.querySelectorAll('.nav-link').forEach(link=>{
-  link.addEventListener('click',e=>{
-    e.preventDefault();
-    document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
-    document.querySelectorAll('.content-section').forEach(s=>s.classList.remove('active'));
-    link.classList.add('active');
-    document.getElementById(link.getAttribute('data-section')).classList.add('active');
-  });
-});
 
 /* 1) Animated ink underline for nav */
 (function navInk(){
@@ -1115,6 +1296,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!rcModeSel || !rcValueSel) return;
 
   // util kecil
+  
   const MONTHS_ID_SHORT = ["","Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
   const fmtIDnum = (x, dec = 0) =>
     (x == null || Number.isNaN(x))
@@ -1273,157 +1455,389 @@ async function fetchAndRenderEvalForCity(city){
   }
 }
 
+async function loadUpload() {
+  console.log("loadUpload called");
+  const fileInput = document.getElementById('fileInput');
+  const uploadPrompt = document.getElementById('uploadPrompt');
+  const uploadSuccess = document.getElementById('uploadSuccess');
+  const uploadResults = document.getElementById('uploadResults');
+  const ph = document.getElementById('uploadPlaceholder'); // placeholder error/loading (opsional)
+  const saveBtn = document.getElementById('saveUploadBtn');
+
+  // Reset UI state
+  if (ph) ph.style.display = 'none';
+  if (uploadPrompt) uploadPrompt.style.display = 'block';
+  if (uploadSuccess) uploadSuccess.style.display = 'none';
+  if (uploadResults) uploadResults.style.display = 'none';
+  if (saveBtn) saveBtn.disabled = true;
+
+  // If a file already selected (page refresh / revisit), tampilkan detail & enable save
+  if (fileInput && fileInput.files && fileInput.files[0]) {
+    const file = fileInput.files[0];
+    if (uploadPrompt) uploadPrompt.style.display = 'none';
+    if (uploadSuccess) {
+      uploadSuccess.style.display = 'block';
+      const fn = document.getElementById('fileName');
+      const fs = document.getElementById('fileSize');
+      if (fn) fn.textContent = file.name;
+      if (fs) fs.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+    }
+    if (saveBtn) saveBtn.disabled = false;
+    // note: jangan auto-proses kecuali memang diinginkan
+  }
+
+  // **JANGAN** memanggil navLink.click() di sini — navigasi (menunjukkan section)
+  // **ditangani oleh delegated nav handler**. Jika kamu ingin memastikan section terlihat
+  // ketika fungsi ini dipanggil dari tempat lain, panggil showSectionById('upload')
+  // atau simpan logika showSection di satu tempat.
+}
+
+window.loadUpload = loadUpload;
 /* =========================
    Dropdown Search Optimized
    ========================= */
-(function dropdownKabupaten(){
-  const btn    = document.getElementById('kabupatenBtn');
-  const panel  = document.getElementById('kabupatenPanel');
-  const inp    = document.getElementById('kabupatenSearch');
-  const listEl = document.getElementById('kabupatenList');
-  const metaEl = document.getElementById('kabupatenMeta');
-  const hidden = document.getElementById('kabupaten_a');
+// dipanggil oleh <input type="file" onchange="handleFileSelect(event)">
+function handleFileSelect(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const uploadPrompt = document.getElementById('uploadPrompt');
+  const uploadSuccess = document.getElementById('uploadSuccess');
+  const fn = document.getElementById('fileName');
+  const fs = document.getElementById('fileSize');
+  if (uploadPrompt) uploadPrompt.style.display = 'none';
+  if (uploadSuccess) uploadSuccess.style.display = 'block';
+  if (fn) fn.textContent = file.name;
+  if (fs) fs.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+  document.getElementById('saveUploadBtn').disabled = false;
+}
 
-  if (!btn || !panel || !inp || !listEl || !hidden) return;
+// simple helpers for downloading templates (kamu bisa generate file server-side too)
+function downloadTemplateCSV() {
+  const csv = "date,City A,City B\n2023-01-01,0,0\n";
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'template_prices.csv';
+  a.click();
+}
+function downloadTemplateExcel() {
+  // buat placeholder: arahkan ke template di server jika ada. Untuk demo, fallback ke CSV:
+  downloadTemplateCSV();
+}
 
-  // --- 1) Ambil & cache data (sekali saja)
-  let cities = window.__CITIES_CACHE || null;
-  let lastRender = []; // untuk diff minimal
-  const MAX_RENDER = 200;          // batasi render supaya lincah
-  const DEBOUNCE_MS = 120;         // filter debounce
+// utama: kirim file ke backend
+// GANTI fungsi saveAndPredict dengan ini
+// --- replace saveAndPredict with this defensive version ---
+async function saveAndPredict() {
+  const fileInput = document.getElementById('fileInput');
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) return alert('Pilih file dulu');
+  const file = fileInput.files[0];
+  const saveBtn = document.getElementById('saveUploadBtn');
+  const loading = document.getElementById('uploadLoading');
 
-  const norm = s => (s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
-  const slugify = s => norm(s).replace(/\s+/g,'_').replace(/[^\w_]/g,'');
+  saveBtn.disabled = true;
+  loading.style.display = 'inline-block';
+  loading.textContent = 'Memproses... (ini bisa lama jika mode full)';
 
-  async function loadCities(){
-    if (cities) return cities;
-    try{
-      const r = await fetch('/api/cities_full', {cache:'no-store'});
-      const arr = await r.json();
-      cities = arr.map(x=>({
-        label: x.label || x.name,
-        slug : x.slug  || slugify(x.label || x.name),
-        prov : x.province || x.prov || '',
-        island: x.island || ''
-      }));
-    }catch{
-      const r2 = await fetch('/api/cities', {cache:'no-store'});
-      const arr2 = await r2.json();
-      cities = arr2.map(l=>({ label:l, slug:slugify(l), prov:'', island:'' }));
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('mode', 'full'); // ubah ke 'quick' bila ingin cepat
+
+    const resp = await fetchJsonSafe('/api/upload_file', {
+      method: 'POST',
+      body: fd
+    });
+
+    console.log('upload response (safe):', resp);
+
+    // Jika status non-OK, tampilkan detail (server bisa ngirim 400 dengan JSON)
+    if (!resp.ok) {
+      const reason = resp.data ? JSON.stringify(resp.data) : (resp.text || `HTTP ${resp.status}`);
+      throw new Error(reason);
     }
-    // Precompute utk cepat cari
-    cities.forEach(c=>{ c._l = norm(c.label); });
-    window.__CITIES_CACHE = cities;
-    return cities;
-  }
 
-  // --- 2) Filter cepat: prioritas startsWith, lalu includes; limit MAX_RENDER
-  function filterCities(q){
-    if (!q) return cities.slice(0, MAX_RENDER);
-    const n = norm(q);
-    const starts = [];
-    const contains = [];
-    for (const c of cities){
-      const i = c._l.indexOf(n);
-      if (i === 0) starts.push(c);
-      else if (i > 0) contains.push(c);
-      if (starts.length + contains.length >= MAX_RENDER) break;
+    // Ambil parsed JSON kalau ada; kalau tidak ada fallback ke text (dan coba parse)
+    let data = resp.data;
+    if (!data && resp.text) {
+      try { data = JSON.parse(resp.text); }
+      catch (e) { /* tetap null */ }
     }
-    return starts.concat(contains).slice(0, MAX_RENDER);
-  }
 
-  // --- 3) Render hemat (pakai DocumentFragment, no reflow besar)
-  function render(items){
-    // quick bail: kalau list sama (panjang & slug sama), jangan render ulang
-    if (items.length === lastRender.length && items.every((it, i)=> it.slug === lastRender[i].slug)) return;
-
-    const frag = document.createDocumentFragment();
-    for (const c of items){
-      const div = document.createElement('div');
-      div.className = 'dropdown-item';
-      div.setAttribute('role', 'option');
-      div.dataset.slug = c.slug;
-      div.innerHTML = `<span>${c.label}</span>${c.prov ? `<span class="sub">${c.prov}</span>` : ''}`;
-      frag.appendChild(div);
+    if (!data) {
+      console.warn('Server returned no JSON body; raw text:', resp.text);
+      throw new Error('Server memberikan response tanpa JSON. Periksa Network tab / server log.');
     }
-    listEl.innerHTML = '';
-    listEl.appendChild(frag);
-    metaEl.textContent = `${items.length} hasil`;
-    lastRender = items;
+
+    console.log('upload data parsed:', data);
+
+    // HANDLE QUICK
+    if (data.mode === 'quick' || data.stats) {
+      renderResults(data);
+      return;
+    }
+
+    // HANDLE FULL (server kamu mengembalikan single-city 'full' object)
+    if (data.mode === 'full') {
+      // render same UI as quick, plus show pack/metrics etc
+      renderResults(data);
+
+      // optional: show detailed results list if response included `results` array
+      const ul = document.getElementById('uploadFullResultsList');
+      if (ul && Array.isArray(data.results)) {
+        ul.innerHTML = data.results.map(r => {
+          if (r.ok) return `<li><b>${r.city}</b>: OK — best_r2=${r.best_r2 ?? '-'}</li>`;
+          return `<li><b>${r.city}</b>: FAIL — ${r.reason ?? JSON.stringify(r)}</li>`;
+        }).join('');
+        document.getElementById('uploadFullSummary')?.style.removeProperty('display');
+      }
+
+      // show uploadResults section
+      document.getElementById('uploadResults')?.style.removeProperty('display');
+      return;
+    }
+
+    // fallback: jika ada stats/predictions di bentuk lain
+    if (data.stats || data.predictions || data.trend || data.pred_series) {
+      renderResults(data);
+      return;
+    }
+
+    console.warn('Unexpected upload response shape', data);
+    alert('Server returned unexpected response. Check console / Network.');
+
+  } catch (err) {
+    console.error(err);
+    alert('Terjadi error: ' + (err.message || err));
+  } finally {
+    loading.style.display = 'none';
+    saveBtn.disabled = false;
+  }
+}
+
+
+
+// render hasil: update stats dan chart
+// global chart holders (safe)
+window._uploadTrendChart = window._uploadTrendChart || null;
+window._uploadPredChart  = window._uploadPredChart  || null;
+
+function fmtID(n){
+  if (n == null || Number.isNaN(n)) return '-';
+  return 'Rp ' + new Intl.NumberFormat('id-ID', {maximumFractionDigits:0}).format(Math.round(n));
+}
+
+function renderResults(payload){
+  // payload bisa shape quick OR full
+  const container = document.getElementById('uploadResults');
+  if (!container) {
+    console.warn('renderResults: #uploadResults tidak ditemukan');
+    return;
+  }
+  // show container
+  container.style.removeProperty('display');
+
+  // --- stats: support payload.stats OR payload.metrics / payload.n_total ---
+  const stats = payload.stats || payload.metrics || {};
+  const nPoints = stats.n_points ?? stats.n ?? payload.n_total ?? '-';
+  const avg = stats.avg ?? stats.mean ?? '-';
+  const min = stats.min ?? '-';
+  const max = stats.max ?? '-';
+
+  const elN = document.getElementById('uploadDataPoints');
+  const elAvg = document.getElementById('uploadAvgPrice');
+  const elMin = document.getElementById('uploadMinPrice');
+  const elMax = document.getElementById('uploadMaxPrice');
+
+  if (elN) elN.textContent = (nPoints === '-' ? '-' : String(nPoints));
+  if (elAvg) elAvg.textContent = (avg === '-' ? '-' : fmtID(avg));
+  if (elMin) elMin.textContent = (min === '-' ? '-' : fmtID(min));
+  if (elMax) elMax.textContent = (max === '-' ? '-' : fmtID(max));
+
+  // --- predictions: accept keys '1','7','10','30' safe ---
+  const preds = payload.predictions || payload.predictions_full || {};
+  const pick = (k)=> {
+    if (!preds) return null;
+    if (preds[k]) return preds[k];
+    // sometimes backend returns numbers => try numeric key
+    return preds[String(k)] || null;
+  };
+  const p1 = pick('1') || pick(1) || null;
+  const p7 = pick('7') || pick(7) || null;
+  const p30 = pick('30') || pick(30) || pick('10') || pick(10) || null; // be permissive
+
+  if (document.getElementById('pred1Day')) document.getElementById('pred1Day').textContent = p1?.value == null ? '-' : fmtID(p1.value);
+  if (document.getElementById('pred1DayDate')) document.getElementById('pred1DayDate').textContent = p1?.date ?? '—';
+  if (document.getElementById('pred7Day')) document.getElementById('pred7Day').textContent = p7?.value == null ? '-' : fmtID(p7.value);
+  if (document.getElementById('pred7DayDate')) document.getElementById('pred7DayDate').textContent = p7?.date ?? '—';
+  if (document.getElementById('pred30Day')) document.getElementById('pred30Day').textContent = p30?.value == null ? '-' : fmtID(p30.value);
+  if (document.getElementById('pred30DayDate')) document.getElementById('pred30DayDate').textContent = p30?.date ?? '—';
+
+  // --- trend chart (actual series); support payload.trend (dates/values) OR payload.trend_series shape ---
+  const trend = payload.trend || (payload.trend_series && { dates: payload.trend_series.dates, values: payload.trend_series.actual }) || {dates: [], values: []};
+  try {
+    const ctx = document.getElementById('uploadTrendChart')?.getContext?.('2d');
+    if (ctx) {
+      if (window._uploadTrendChart) window._uploadTrendChart.destroy();
+      window._uploadTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: trend.dates || [], datasets: [{ label: 'Harga Aktual', data: trend.values || [], tension: 0.2, pointRadius: 0 }] },
+        options: { responsive: true, plugins: { legend: { display:false } } }
+      });
+    }
+  } catch (e) {
+    console.error('renderResults: trend chart error', e);
   }
 
-  // --- 4) Open/close tanpa kedip
-  let insidePointer = false;
-  function openPanel(){
-    if (panel.style.display === 'block') return;
-    panel.style.display = 'block';
-    btn.setAttribute('aria-expanded','true');
-    // fokus setelah terbuka
-    setTimeout(()=> inp.focus(), 0);
+  // --- pred vs actual chart: payload.pred_series or payload.predicted + payload.actual (predict_range style) ---
+  let predChartLabels = [];
+  let predActual = [];
+  let predPred = [];
+
+  if (payload.pred_series && payload.pred_series.dates) {
+    predChartLabels = payload.pred_series.dates;
+    predActual = payload.pred_series.actual || [];
+    predPred = payload.pred_series.pred || [];
+  } else if (payload.trend && payload.predictions_series) {
+    // fallback if weird shape
+    predChartLabels = payload.trend.dates || [];
+    predActual = payload.trend.values || [];
+    predPred = payload.predictions_series.values || [];
+  } else if (payload.actual && payload.predicted) {
+    predChartLabels = (payload.actual || []).map(p=>p.date);
+    predActual = (payload.actual || []).map(p=>p.value);
+    predPred = (payload.predicted || []).map(p=>p.value);
+  } else {
+    // try using trend for actual and shifted actual as pred
+    predChartLabels = trend.dates || [];
+    predActual = trend.values || [];
+    predPred = (trend.values || []).slice(0); predPred.unshift(null); predPred.pop();
   }
-  function closePanel(){
-    if (panel.style.display === 'none') return;
-    panel.style.display = 'none';
-    btn.setAttribute('aria-expanded','false');
+
+  try {
+    const ctx2 = document.getElementById('uploadPredChart')?.getContext?.('2d');
+    if (ctx2) {
+      if (window._uploadPredChart) window._uploadPredChart.destroy();
+      window._uploadPredChart = new Chart(ctx2, {
+        type: 'line',
+        data: {
+          labels: predChartLabels || [],
+          datasets: [
+            { label: 'Actual', data: predActual || [], pointRadius:0, tension:.2 },
+            { label: 'Prediction', data: predPred || [], pointRadius:0, tension:.2, borderDash:[6,4] }
+          ]
+        },
+        options: { responsive: true }
+      });
+    }
+  } catch (e) {
+    console.error('renderResults: pred chart error', e);
   }
 
-  btn.addEventListener('click', async ()=>{
-    if (panel.style.display === 'block'){ closePanel(); return; }
-    await loadCities();
-    render(cities.slice(0, MAX_RENDER));
-    openPanel();
+  // --- full summary UI (if payload has training info) ---
+  const fullSummary = document.getElementById('uploadFullSummary');
+  const ul = document.getElementById('uploadFullResultsList');
+  if (payload.mode === 'full' || payload.best_r2 || payload.pack_path || payload.metrics) {
+    if (fullSummary) fullSummary.style.removeProperty('display');
+    if (ul) {
+      ul.innerHTML = `
+        <li><b>Kota:</b> ${payload.city ?? '-'}</li>
+        <li><b>n_total:</b> ${payload.n_total ?? '-'}</li>
+        <li><b>test_days:</b> ${payload.test_days ?? '-'}</li>
+        <li><b>best_r2:</b> ${payload.best_r2 ?? '-'}</li>
+        <li><b>pack:</b> ${payload.pack_path ? payload.pack_path.split('/').pop() : '-'}</li>
+        <li><b>metrics:</b> <pre style="white-space:pre-wrap">${JSON.stringify(payload.metrics || payload.metrics || {}, null, 2)}</pre></li>
+      `;
+    }
+  } else {
+    if (fullSummary) fullSummary.style.display = 'none';
+    if (ul) ul.innerHTML = '';
+  }
+}
+
+
+function downloadTemplateCSV() {
+  const csv = "date,City A,City B\n2023-01-01,0,0\n";
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'template_prices.csv';
+  a.click();
+}
+function downloadTemplateExcel() {
+  // buat placeholder: arahkan ke template di server jika ada. Untuk demo, fallback ke CSV:
+  downloadTemplateCSV();
+}
+
+
+
+// ===== Patch kecil: pastikan Upload link ada & kliknya memanggil loadUpload() + show section =====
+// -----------------------------
+// Single delegated nav handler
+// -----------------------------
+document.addEventListener('DOMContentLoaded', () => {
+  const nav = document.querySelector('.top-nav') || document.querySelector('nav');
+  if (!nav) return;
+
+  // Ensure Upload link exists (only create if missing)
+  if (!nav.querySelector('.nav-link[data-section="upload"]')) {
+    const uploadLink = document.createElement('a');
+    uploadLink.href = '#';
+    uploadLink.className = 'nav-link';
+    uploadLink.dataset.section = 'upload';
+    uploadLink.textContent = 'Upload';
+    nav.appendChild(uploadLink);
+  }
+
+  // Delegated click handler untuk semua nav-link
+  nav.addEventListener('click', (ev) => {
+    const a = ev.target.closest('.nav-link');
+    if (!a) return;
+    ev.preventDefault();
+
+    const targetId = a.getAttribute('data-section');
+    if (!targetId) return;
+
+    // update nav active state
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    a.classList.add('active');
+
+    // hide semua section dulu
+    document.querySelectorAll('.content-section').forEach(s => {
+      s.classList.remove('active','is-visible');
+      s.style.display = 'none';
+    });
+
+    // show target section
+    const sec = document.getElementById(targetId);
+    if (sec) {
+      sec.style.removeProperty('display');
+      sec.classList.add('active','is-visible');
+      try { sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch(_) {}
+    }
+
+    // khusus: kalau buka upload => panggil loadUpload()
+    if (targetId === 'upload' && typeof window.loadUpload === 'function') {
+      try { window.loadUpload(); } catch (e) { console.error('loadUpload error', e); }
+    }
+
+    // resize map/chart safe-guards
+    setTimeout(() => {
+      try { if (window.map && typeof window.map.invalidateSize === 'function') window.map.invalidateSize(); } catch(_) {}
+      try { if (window.trendChart && typeof window.trendChart.resize === 'function') window.trendChart.resize(); } catch(_) {}
+      try { if (window._predChart && typeof window._predChart.resize === 'function') window._predChart.resize(); } catch(_) {}
+      try { if (window._evChart && typeof window._evChart.resize === 'function') window._evChart.resize(); } catch(_) {}
+    }, 300);
   });
 
-  // cegah close saat scroll/klik di dalam panel
-  panel.addEventListener('pointerdown', ()=>{ insidePointer = true; }, {passive:true});
-  document.addEventListener('pointerdown', (e)=>{
-    if (insidePointer){ insidePointer = false; return; }
-    if (!panel.contains(e.target) && e.target !== btn) closePanel();
-  });
-
-  // --- 5) Debounced search (supaya gak “bergetar”)
-  let t = null;
-  inp.addEventListener('input', ()=>{
-    clearTimeout(t);
-    const q = inp.value.trim();
-    t = setTimeout(()=>{
-      const items = filterCities(q);
-      render(items);
-    }, DEBOUNCE_MS);
-  });
-
-  // --- 6) Pilih item (pakai mousedown supaya gak kehilangan fokus saat click)
-  listEl.addEventListener('mousedown', (e)=>{
-    const item = e.target.closest('.dropdown-item');
-    if (!item) return;
-    e.preventDefault(); // biar gak trigger blur/close duluan
-    const slug = item.dataset.slug;
-    const label = item.querySelector('span')?.textContent || item.textContent;
-    hidden.value = slug;
-    btn.textContent = label;
-    closePanel();
-  });
-
-  // --- 7) Keyboard nav (↑/↓/Enter/Esc)
-  let activeIdx = -1;
-  function highlight(idx){
-    const nodes = listEl.querySelectorAll('.dropdown-item');
-    nodes.forEach(n=> n.removeAttribute('aria-selected'));
-    if (idx >=0 && idx < nodes.length){
-      nodes[idx].setAttribute('aria-selected','true');
-      nodes[idx].scrollIntoView({block:'nearest'});
+  // Move ink underline to active (if you use the ink UI)
+  const ink = nav.querySelector('.ink');
+  if (ink) {
+    const active = nav.querySelector('.nav-link.active') || nav.querySelector('.nav-link');
+    if (active) {
+      const rect = active.getBoundingClientRect(), parent = nav.getBoundingClientRect();
+      ink.style.width = rect.width + 'px';
+      ink.style.left  = (rect.left - parent.left) + 'px';
     }
   }
-  inp.addEventListener('keydown', (e)=>{
-    const nodes = listEl.querySelectorAll('.dropdown-item');
-    if (e.key === 'ArrowDown'){ e.preventDefault(); activeIdx = Math.min(nodes.length-1, activeIdx+1); highlight(activeIdx); }
-    else if (e.key === 'ArrowUp'){ e.preventDefault(); activeIdx = Math.max(0, activeIdx-1); highlight(activeIdx); }
-    else if (e.key === 'Enter'){ e.preventDefault(); if (activeIdx>=0 && nodes[activeIdx]) nodes[activeIdx].dispatchEvent(new MouseEvent('mousedown')); }
-    else if (e.key === 'Escape'){ closePanel(); btn.focus(); }
-  });
-
-  // preload ringan (biar cepat saat pertama kali klik)
-  loadCities();
-})();
-
-
+});

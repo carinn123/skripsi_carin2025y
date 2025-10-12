@@ -51,7 +51,7 @@
         <a href="#" class="nav-link active" data-section="beranda">🏠 Beranda</a>
         <a href="#" class="nav-link" data-section="tren">📈 Tinjauan Tren</a>
         <a href="#" class="nav-link" data-section="prediksi">🔮 Prediksi</a>
-        <!-- <a href="#" class="nav-link" data-section="evaluasi">🧪 Evaluasi</a> -->
+        <a href="#" class="nav-link" data-section="upload">🧪 Evaluasi</a>
       </nav>
     </div>
   </header>
@@ -356,8 +356,6 @@
     </div>
 
 
-      <!-- ====== PREDIKSI ====== -->
-     <!-- ====== PREDIKSI ====== -->
 <!-- ====== PREDIKSI ====== -->
 <div class="content-section" id="prediksi">
   <h2 class="section-title">Prediksi Harga Minyak Goreng</h2>
@@ -421,47 +419,143 @@
 </div>
 
 
+<!-- ===== UPLOAD DATA SECTION (TAB KE-4) ===== -->
+ <!-- ===== UPLOAD DATA SECTION ===== -->
+<div class="content-section" id="upload">
+  <h2 class="section-title">📤 Upload Data Harga Minyak Goreng</h2>
 
-      <!-- ====== EVALUASI ====== -->
-     <!-- ====== EVALUASI ====== -->
-   <div class="content-section" id="evaluasi">
-  <h2 class="section-title">Evaluasi Model & Performance</h2>
+  <!-- Guide -->
+  <div class="upload-guide">
+    <strong>📋 Cara Upload:</strong>
+    <span>1. Download template</span>
+    <span>2. Isi data sesuai format</span>
+    <span>3. Upload file</span>
+    <span>4. Klik Simpan & Analisis</span>
+  </div>
 
-  <div class="input-section">
-    <div class="input-row">
-      <div class="input-group" style="flex:2">
-        <label for="ev_city">Kab/Kota</label>
-        <select id="ev_city"><option value="">-- Pilih Kabupaten/Kota --</option></select>
+  <!-- Template Download -->
+  <div class="template-section">
+    <div class="template-info">
+      <div class="template-icon">📥</div>
+      <div>
+        <h3>Template File</h3>
+        <p>Download template untuk format data yang benar</p>
       </div>
-      <div class="input-group">
-        <label for="ev_gran">Granularitas</label>
-        <select id="ev_gran">
-          <option value="weekly">Mingguan (rata-rata)</option>
-          <option value="monthly">Bulanan (rata-rata)</option>
-          <option value="daily">Harian</option>
-        </select>
-      </div>
-      <div class="input-group">
-        <button class="btn" onclick="loadEvaluasi()">Hitung Evaluasi</button>
+    </div>
+    <div class="template-buttons">
+      <button class="btn-download" onclick="downloadTemplateCSV()">
+        📄 CSV
+      </button>
+      <button class="btn-download" onclick="downloadTemplateExcel()">
+        📊 Excel
+      </button>
+    </div>
+  </div>
+
+  <!-- Upload Area -->
+  <div class="upload-wrapper">
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleFileSelect(event)">
+    
+    <!-- Empty State -->
+    <div id="uploadPrompt" class="upload-zone">
+      <div class="upload-icon">📂</div>
+      <h3>Drop file di sini atau klik untuk pilih</h3>
+      <p>Format: .xlsx, .xls, .csv (Max 10 MB)</p>
+      <button class="btn-select-file" onclick="document.getElementById('fileInput').click()">
+        Pilih File
+      </button>
+    </div>
+
+    <!-- File Selected State -->
+    <div id="uploadSuccess" class="upload-selected" style="display: none;">
+      <div class="file-info-row">
+        <div class="file-check">✓</div>
+        <div class="file-details">
+          <div class="file-name" id="fileName">—</div>
+          <div class="file-size" id="fileSize">—</div>
+        </div>
+        <button class="btn-change" onclick="document.getElementById('fileInput').click()">
+          Ganti
+        </button>
       </div>
     </div>
   </div>
 
-  <div class="stats-grid">
-    <div class="stat-card"><div class="stat-value" id="evMAE">-</div><div class="stat-label">MAE</div></div>
-    <div class="stat-card"><div class="stat-value" id="evMAPE">-</div><div class="stat-label">MAPE (%)</div></div>
-    <div class="stat-card"><div class="stat-value" id="evMSE">-</div><div class="stat-label">MSE</div></div>
-    <div class="stat-card"><div class="stat-value" id="evR2">-</div><div class="stat-label">R² Score</div></div>
+  <!-- Action Button -->
+  <div class="upload-submit">
+    <button class="btn-submit" id="saveUploadBtn" onclick="saveAndPredict()" disabled>
+      <span>💾</span>
+      <span>Simpan & Analisis</span>
+      <span class="loading" id="uploadLoading" style="display:none;"></span>
+    </button>
   </div>
 
-  <div class="chart-container">
-    <canvas id="evChart"></canvas>
-    <div class="chart-placeholder" id="evPlaceholder">
-      📊 Pilih kota & granularitas, lalu klik <b>Hitung Evaluasi</b>.
+  <!-- Results Section (existing) -->
+  <div id="uploadResults" style="display: none;">
+    
+    <div class="card-section">
+      <h3>📈 Grafik Tren Data Harga Aktual</h3>
+      <div class="chart-container">
+        <canvas id="uploadTrendChart"></canvas>
+      </div>
     </div>
+
+    <div class="card-section">
+      <h3>📊 Statistik Data</h3>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="uploadDataPoints">-</div>
+          <div class="stat-label">Total Data Points</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="uploadAvgPrice">-</div>
+          <div class="stat-label">Harga Rata-rata</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="uploadMinPrice">-</div>
+          <div class="stat-label">Harga Terendah</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="uploadMaxPrice">-</div>
+          <div class="stat-label">Harga Tertinggi</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-section">
+      <h3>🔮 Prediksi Harga Mendatang</h3>
+      <div class="predictions-grid">
+        <div class="prediction-card pred-1day">
+          <div class="pred-label">Prediksi 1 Hari</div>
+          <div class="pred-value" id="pred1Day">-</div>
+          <div class="pred-date" id="pred1DayDate">—</div>
+        </div>
+        <div class="prediction-card pred-7day">
+          <div class="pred-label">Prediksi 7 Hari</div>
+          <div class="pred-value" id="pred7Day">-</div>
+          <div class="pred-date" id="pred7DayDate">—</div>
+        </div>
+        <div class="prediction-card pred-10day">
+          <div class="pred-label">Prediksi 30 Hari</div>
+          <div class="pred-value" id="pred30Day">-</div>
+          <div class="pred-date" id="pred30DayDate">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-section">
+      <h3>📉 Grafik Prediksi vs Aktual</h3>
+      <div class="chart-container">
+        <canvas id="uploadPredChart"></canvas>
+      </div>
+    </div>
+
   </div>
 </div>
 
+      <!-- ====== EVALUASI ====== -->
+     <!-- ====== EVALUASI ====== -->
+   
     </div>
   </main>
 
