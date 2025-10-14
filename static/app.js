@@ -732,11 +732,16 @@ function _renderPredSummaryFromServer(s){
   document.getElementById('predChangeNote').textContent =
     (s.start!=null && s.end!=null) ? `${fmt(s.start)} → ${fmt(s.end)}` : '—';
 }
-async function fetchPredictRange(citySlug, startISO, endISO) {
+async function fetchPredictRange(citySlug, startISO, endISO, mode = 'test') {
+   // normalisasi mode
+  const modeNorm = (mode || 'test').toString().toLowerCase();
+  const allowed = new Set(['test','real']);
+  const modeToSend = allowed.has(modeNorm) ? modeNorm : 'test';
   const params = new URLSearchParams({
     city: citySlug,
     start: startISO,
     end: endISO,
+    mode: modeToSend,
     future_only: '0',
     hide_actual: '0',
     naive_fallback: '1',
@@ -906,6 +911,8 @@ async function loadPrediksi(){
   const start = document.getElementById('startDate').value;
   const end   = document.getElementById('endDate').value;
   const ph = document.getElementById('predPlaceholder');
+  const predModeEl = document.getElementById('predMode');
+  const mode = predModeEl ? (predModeEl.value || 'test') : 'test';
 
   if (!citySlug) { alert('Pilih Kabupaten/Kota.'); return; }
   if (!start || !end) { alert('Tanggal mulai & akhir wajib diisi.'); return; }
@@ -913,7 +920,7 @@ async function loadPrediksi(){
   try {
     ph.style.display = 'none';
 
-    const r = await fetchPredictRange(citySlug, start, end);
+    const r = await fetchPredictRange(citySlug, start, end, mode);
     const labels = fullDateRange(start, end);
 
     // r.actual & r.predicted: [{date:'YYYY-MM-DD', value:number}, ...]
@@ -1444,16 +1451,39 @@ function updateEvalCards(metrics) {
   // set('performanceGrade', grade);
 }
 
-async function fetchAndRenderEvalForCity(city){
-  try{
-    const res = await fetch(`/api/eval_summary?city=${encodeURIComponent(city)}`);
-    if (!res.ok) throw 0;
-    const js = await res.json();
-    updateEvalCards(js?.metrics || {});
-  } catch {
-    updateEvalCards({});
+async function fetchAndRenderEvalForCity(cityKey){
+  try {
+    // encode untuk aman (entity kadang ada underscore/dots)
+    const url = `/api/eval_summary?city=${encodeURIComponent(cityKey)}`;
+    const res = await fetch(url);
+    if (res.status === 404){
+      console.info("Eval summary not found for", cityKey);
+      // sembunyikan atau kosongkan area eval di UI
+      const el = document.getElementById('evalSummaryBox');
+      if (el) el.style.display = 'none';
+      return null;
+    }
+    if (!res.ok){
+      console.warn("Gagal fetch eval_summary:", res.status, await res.text());
+      return null;
+    }
+    const j = await res.json();
+    // tampilkan ke UI: contoh sederhana
+    const box = document.getElementById('evalSummaryBox');
+    if (box){
+      box.style.removeProperty('display');
+      // asumsikan ada elemen child: #eval_mae, #eval_r2
+      document.getElementById('eval_city').textContent = j.city || cityKey;
+      _safeSetText('eval_mae', j.metrics?.mae ?? '-');
+      _safeSetText('eval_r2',  j.metrics?.r2  ?? '-');
+    }
+    return j;
+  } catch (e) {
+    console.error("fetchAndRenderEvalForCity error:", e);
+    return null;
   }
 }
+
 
 async function loadUpload() {
   console.log("loadUpload called");

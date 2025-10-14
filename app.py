@@ -19,8 +19,10 @@ from io import StringIO
 # =======================
 BASE_DIR = Path(__file__).resolve().parent
 
-DATA_PATH   = BASE_DIR / "data" / "dataset_filled_ffill_bfill.xlsx"
+DATA_PATH   = BASE_DIR / "data" / "dataset_filled_ffill_bfill - Copy.xlsx"
 MODELS_DIR  = BASE_DIR / "packs"
+MODELS_DIR_PACKS  = BASE_DIR / "models"
+
 
 ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
 CITY_COORDS_PATH = BASE_DIR / "static" / "city_coords.json"
@@ -556,7 +558,7 @@ def _compute_last_actual_dates(path_xlsx: str) -> dict:
     raw = raw.dropna(subset=[date_col]).sort_values(date_col)
     value_cols = raw.columns[1:]
 
-    cutoff = pd.Timestamp("2025-07-01")  # batas akhir data nyata
+    cutoff = pd.Timestamp("2025-10-01")  # batas akhir data nyata
     last = {}
     for c in value_cols:
         ent = re.sub(r"\s+", "_", str(c).strip().lower())
@@ -844,19 +846,31 @@ def _apply_rolling(series_list, window=30, minp=None):
            for d, v in zip(df["date"], df["value"]) if pd.notna(v)]
     return out
 
-def _load_model_for_entity(entity: str):
-    if entity in _MODEL_CACHE:
-        return _MODEL_CACHE[entity]
+def _load_model_for_entity(entity: str, mode: str = "test"):
+    """
+    Load model pack for given entity. `mode` controls which folder to load from:
+      - mode == "real" -> MODELS_DIR_MODELS
+      - otherwise        -> MODELS_DIR_PACKS
 
-    # 1) Cari pack terlebih dulu
-    files = sorted(MODELS_DIR.glob(f"{entity}*best_pack.joblib"))
+    Caching key includes mode so test/real don't collide.
+    """
+    cache_key = f"{mode}::{entity}"
+    if cache_key in _MODEL_CACHE:
+        return _MODEL_CACHE[cache_key]
+
+    # pilih folder model berdasarkan mode
+    models_dir = MODELS_DIR_PACKS if str(mode).lower() == "real" else MODELS_DIR
+
+    # 1) Cari pack terlebih dulu (packs naming)
+    files = sorted(models_dir.glob(f"{entity}*best_pack.joblib"))
     # 2) Fallback: file joblib apa pun yang cocok
     if not files:
-        files = sorted(MODELS_DIR.glob(f"{entity}*.joblib"))
+        files = sorted(models_dir.glob(f"{entity}*.joblib"))
     if not files:
-        raise FileNotFoundError(f"Model file untuk '{entity}' tidak ditemukan di {MODELS_DIR}")
+        raise FileNotFoundError(f"Model file untuk '{entity}' tidak ditemukan di {models_dir}")
 
-    pack = joblib.load(files[0])
+    files0 = files[0]
+    pack = joblib.load(files0)
 
     # --- Normalisasi isi pack ---
     if isinstance(pack, dict) and "model" in pack and "feature_cols" in pack:
@@ -869,10 +883,10 @@ def _load_model_for_entity(entity: str):
         feature_cols = list(getattr(model, "feature_names_in_", []))
         best_cfg     = {"mode": "level", "transform": "none", "train_until": None, "alpha_blend": 1.0}
         metrics      = {}
-        print(f">> WARNING: '{files[0].name}' bukan pack. Memakai raw estimator.")
+        print(f">> WARNING: '{files0.name}' bukan pack. Memakai raw estimator.")
 
     alpha      = float(best_cfg.get("alpha_blend", 1.0))
-    mode       = best_cfg.get("mode", "level")
+    mode_cfg   = best_cfg.get("mode", "level")
     transform  = best_cfg.get("transform", "none")
 
     # === Reconstruct smearing (kalau level+log) ===
@@ -883,23 +897,20 @@ def _load_model_for_entity(entity: str):
     train_until = pd.to_datetime(train_until_raw) if train_until_raw else df_feat["date"].max()
     df_train = df_feat.loc[df_feat["date"] <= train_until].copy()
 
-    use_log = (mode == "level" and transform == "log")
+    use_log = (mode_cfg == "level" and transform == "log")
     smear = 1.0  # default aman
 
     if use_log:
         if df_train.empty:
-            # fallback: pakai 80% awal bila cukup panjang; kalau tidak, smear=1.0
             n = len(df_feat)
             if n >= 20:
                 cut = max(10, int(0.8 * n))
                 df_train = df_feat.iloc[:cut].copy()
-                warnings.warn(f"[{entity}] TRAIN subset kosong (train_until={train_until_raw}); "
-                              f"fallback {cut}/{n} baris pertama untuk smearing.")
+                warnings.warn(f"[{entity}] TRAIN subset kosong (train_until={train_until_raw}); fallback {cut}/{n} baris pertama untuk smearing.")
             else:
                 warnings.warn(f"[{entity}] Data terlalu pendek ({n}); set smear=1.0.")
 
         if not df_train.empty:
-            # pilih kolom aman
             if feature_cols:
                 cols = [c for c in feature_cols if c in df_train.columns]
             else:
@@ -918,25 +929,26 @@ def _load_model_for_entity(entity: str):
                 resid_log = np.log(y_train) - yhat_tr
                 smear = float(np.mean(np.exp(resid_log)))
 
-    _MODEL_CACHE[entity] = {
+    _MODEL_CACHE[cache_key] = {
         "model": model,
         "feature_cols": feature_cols,
         "config": best_cfg,
         "metrics": metrics,
         "smear": smear,
-        "mode": mode,
+        "mode": mode_cfg,
         "transform": transform,
         "alpha": alpha,
+        "loaded_from": str(files0)
     }
-    print(f">> Loaded model for {entity} | smear={smear:.6f} | mode={mode}/{transform} | file={files[0].name}")
-    return _MODEL_CACHE[entity]
+    print(f">> Loaded model for {entity} (mode={mode}) | smear={smear:.6f} | cfg_mode={mode_cfg}/{transform} | file={files0.name}")
+    return _MODEL_CACHE[cache_key]
 
-def _one_step_predict_series(entity: str) -> pd.DataFrame:
+def _one_step_predict_series(entity: str, mode: str = "test") -> pd.DataFrame:
     """
     Prediksi one-step-ahead (historis) dengan feature builder yang IDENTIK dgn training.
     Return: DataFrame [date (t+1), pred(level)].
     """
-    b = _load_model_for_entity(entity)
+    b = _load_model_for_entity(entity, mode = mode)
     model     = b["model"]
     mode      = b["mode"]
     transform = b["transform"]
@@ -997,11 +1009,11 @@ def make_features_for_next(dfe: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     return df, feature_cols
 
 
-def _recursive_predict(entity: str, days: int):
+def _recursive_predict(entity: str, days: int, mode: str = "test"):
     if days <= 0:
         return []
 
-    b = _load_model_for_entity(entity)
+    b = _load_model_for_entity(entity,mode = mode)
     model     = b["model"]
     mode      = b["mode"]
     transform = b["transform"]
@@ -1478,6 +1490,7 @@ def api_predict_range():
     slug = request.args.get("city", "").strip().lower()
     start_str = request.args.get("start", "").strip()
     end_str   = request.args.get("end", "").strip()
+    mode = (request.args.get("mode") or "test").strip().lower()
 
     hide_actual    = request.args.get("hide_actual", "0").lower() in ("1","true","yes")
     future_only    = request.args.get("future_only", "0").lower() in ("1","true","yes")
@@ -1520,7 +1533,7 @@ def api_predict_range():
     # Catatan: hanya sampai cutoff (<= last_actual_dt), jadi tidak overlap dengan future.
     if not future_only and start_dt <= last_actual_dt:
         try:
-            one_step = _one_step_predict_series(entity)  # kolom: date, pred
+            one_step = _one_step_predict_series(entity,mode=mode)  # kolom: date, pred
             mask_hist_pred = (one_step["date"] >= start_dt) & (one_step["date"] <= min(end_dt, last_actual_dt))
             for d, v in zip(one_step.loc[mask_hist_pred, "date"], one_step.loc[mask_hist_pred, "pred"]):
                 predicted_series.append({"date": d.date().isoformat(), "value": float(v), "pred": float(v)})
@@ -1538,7 +1551,7 @@ def api_predict_range():
         days_need = int((end_dt - anchor).days)  # jumlah hari yang perlu diprediksi
         print(f"DEBUG future anchor={anchor.date()} days_need={days_need}")
         try:
-            preds = _recursive_predict(entity, days=days_need)  # list {date:'YYYY-MM-DD', pred:float}
+            preds = _recursive_predict(entity, days=days_need,mode = mode)  # list {date:'YYYY-MM-DD', pred:float}
             cnt = 0
             for p in preds:
                 p_dt = pd.to_datetime(p["date"]).normalize()

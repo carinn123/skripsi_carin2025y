@@ -63,7 +63,78 @@
       <!-- ====== BERANDA ====== -->
       <div class="content-section active" id="beranda">
         <h2 class="section-title">Selamat Datang di Sistem Prediksi Harga Minyak Goreng</h2>
+        <div class="input-section">
+        <div class="input-row">
+          <div class="input-group">
+            <label for="quick_kabupaten">Pilih Kabupaten/Kota</label>
+            <select id="quick_kabupaten" onchange="loadQuickPrediction()">
+              <option value="">-- Pilih Kabupaten/Kota --</option>
+              <option value="jakarta">Jakarta Pusat</option>
+              <option value="bandung">Bandung</option>
+              <option value="surabaya">Surabaya</option>
+              <option value="medan">Medan</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
+      <!-- Loading State -->
+      <div id="quickPredLoading" class="loading-state">
+        <span class="loading"></span>
+        <p>Memuat prediksi...</p>
+      </div>
+
+      <!-- Hasil Prediksi -->
+      <div id="quickPredResult" style="display:none">
+        
+        <!-- Prediksi Hari Ini -->
+        <div class="today-card">
+          <div class="today-label">Prediksi Harga Hari Ini</div>
+          <div class="today-value" id="quickTodayValue">Rp 15.200</div>
+          <div class="today-date" id="quickTodayDate">Selasa, 14 Oktober 2025</div>
+        </div>
+
+        <!-- Grafik Prediksi Mendatang -->
+        <div class="chart-wrapper">
+          <h3 class="chart-title">
+            📊 Prediksi Harga Mendatang
+          </h3>
+          <div class="chart-container">
+            <canvas id="quickPredChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Stats Prediksi -->
+        <div class="stats-grid">
+          <div class="stat-box orange">
+            <div class="stat-label">Prediksi Besok</div>
+            <div class="stat-value" id="quickTomorrow">Rp 15.300</div>
+            <div class="stat-date" id="quickTomorrowDate">15 Okt 2025</div>
+          </div>
+          
+          <div class="stat-box blue">
+            <div class="stat-label">Prediksi 7 Hari</div>
+            <div class="stat-value" id="quick7Days">Rp 15.450</div>
+            <div class="stat-date" id="quick7DaysDate">21 Okt 2025</div>
+          </div>
+          
+          <div class="stat-box purple">
+            <div class="stat-label">Prediksi 30 Hari</div>
+            <div class="stat-value" id="quick30Days">Rp 15.750</div>
+            <div class="stat-date" id="quick30DaysDate">13 Nov 2025</div>
+          </div>
+        </div>
+
+        <!-- Link Lihat Detail -->
+        <div class="detail-link-wrapper">
+          <a href="#" class="detail-link" onclick="goToDetailPrediksi(); return false;">
+            <span>📈</span>
+            <span>Lihat Detail & Analisis Lengkap</span>
+            <span style="font-size:1.2rem">→</span>
+          </a>
+        </div>
+
+      </div>
         <div class="input-section" id="beranda-filter">
           <div class="input-row">
             <div class="input-group">
@@ -388,7 +459,6 @@
       <label for="predMode">Mode Prediksi</label>
       <select id="predMode">
         <option value="test">Test (default)</option>
-        <option value="quick">Quick (lebih cepat)</option>
         <option value="real">Real (future-only)</option>
       </select>
     </div>
@@ -422,7 +492,18 @@
     <div class="stat-card"><div class="stat-value" id="predMaxVal">-</div><div class="stat-label">Prediksi Tertinggi</div><small id="predMaxDate" class="muted">—</small></div>
     <div class="stat-card"><div class="stat-value" id="predMinVal">-</div><div class="stat-label">Prediksi Terendah</div><small id="predMinDate" class="muted">—</small></div>
     <div class="stat-card"><div class="stat-value" id="predAvgVal">-</div><div class="stat-label">Rata-rata Prediksi</div><small id="predCount" class="muted">—</small></div>
-    <div class="stat-card"><div class="stat-value" id="predChangePct">-</div><div class="stat-label">Perubahan (%)</div><small id="predChangeNote" class="muted">—</small></div>
+    <!-- <div class="stat-card"><div class="stat-value" id="predChangePct">-</div><div class="stat-label">Perubahan (%)</div><small id="predChangeNote" class="muted">—</small></div> -->
+  </div>
+
+  <h2 class="section-title" style="margin-top:1rem">Evaluasi Model & Performance</h2>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-value" id="mseValue">-</div><div class="stat-label">MSE</div></div>
+    <div class="stat-card"><div class="stat-value" id="rmseValue">-</div><div class="stat-label">RMSE</div></div>
+    <div class="stat-card"><div class="stat-value" id="mapeValue">-</div><div class="stat-label">MAPE (%)</div></div>
+    <div class="stat-card"><div class="stat-value" id="r2Value">-</div><div class="stat-label">R² Score</div></div>
+    <!-- kalau butuh Grade, tambah satu lagi:
+    <div class="stat-card"><div class="stat-value" id="performanceGrade">-</div><div class="stat-label">Grade Model</div></div>
+    -->
   </div>
 </div>
 
