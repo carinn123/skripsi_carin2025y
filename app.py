@@ -20,7 +20,7 @@ from io import StringIO
 BASE_DIR = Path(__file__).resolve().parent
 
 DATA_PATH   = BASE_DIR / "data" / "dataset_filled_ffill_bfill.xlsx"
-MODELS_DIR  = BASE_DIR / "models"
+MODELS_DIR  = BASE_DIR / "packs"
 
 ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
 CITY_COORDS_PATH = BASE_DIR / "static" / "city_coords.json"

@@ -382,8 +382,16 @@
         </div>
 
         <!-- nilai slug yang dipakai loadPrediksi() -->
-        <input type="hidden" id="kabupaten_a" />
+       <select id="kabupaten_a" style="display:none" aria-hidden="true"></select>
       </div>
+          <div class="input-group" style="min-width:160px;">
+      <label for="predMode">Mode Prediksi</label>
+      <select id="predMode">
+        <option value="test">Test (default)</option>
+        <option value="quick">Quick (lebih cepat)</option>
+        <option value="real">Real (future-only)</option>
+      </select>
+    </div>
 
       <div class="input-group">
         <label for="startDate">Tanggal Mulai</label>

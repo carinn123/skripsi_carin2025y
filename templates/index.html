@@ -234,6 +234,13 @@
   <div class="input-row" style="margin-bottom:.8rem">
     <div class="input-group"><label for="startDate">Pilih Tanggal Mulai</label><input type="date" id="startDate"></div>
     <div class="input-group"><label for="endDate">Pilih Tanggal Akhir</label><input type="date" id="endDate"></div>
+    <div class="input-group">
+      <label for="predMode">Mode Prediksi</label>
+      <select id="predMode" aria-label="Pilih mode prediksi">
+        <option value="test" selected>Prediksi dengan uji (test)</option>
+        <option value="real">Prediksi (real)</option>
+      </select>
+    </div>
     <div class="input-group"><button class="btn" onclick="loadPrediksi()">Lihat Prediksi</button></div>
     <input type="hidden" id = "kabupaten_a">
   </div>
@@ -293,7 +300,6 @@
 </div>
 
 
-<!-- ===== UPLOAD DATA SECTION (TAB KE-4) ===== -->
 <!-- ===== UPLOAD DATA SECTION (TAB KE-4) ===== -->
 <div class="content-section" id="upload">
   <h2 class="section-title">📤 Upload Data Harga Minyak Goreng</h2>
