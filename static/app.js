@@ -1,28 +1,29 @@
-// ===== NAV (toggle section) =====
-// ===== NAV (toggle section) =====
-// document.querySelectorAll('.nav-link').forEach(link=>{
-//   link.addEventListener('click', e=>{
-//     e.preventDefault();
-//     const targetId = link.getAttribute('data-section');
-//     if (!targetId) return;
 
-//     document.querySelectorAll('.nav-link').forEach(l=> l.classList.remove('active'));
-//     document.querySelectorAll('.content-section').forEach(s=> s.classList.remove('active'));
+function _safeSetText(id, txt) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = txt;
+}
+async function populateQuickSelect(){ /* ... */ }
+async function quickPredictFetchAndRender(entity, opts){ /* ... */ }
 
-//     link.classList.add('active');
-//     const section = document.getElementById(targetId);
-//     if (section) {
-//       section.classList.add('active');
-//       section.scrollIntoView({ behavior:'smooth', block:'start' });
-//     }
+// --- lainnya, fungsi render/chart, dll ---
 
-//     // khusus: kalau klik upload, panggil loadUpload()
-//     if (targetId === 'upload' && typeof window.loadUpload === 'function') {
-//       try { window.loadUpload(); } catch(e){ console.error(e); }
-//     }
-//   });
-// });
-
+// --- akhirnya: hook DOM ready ---
+document.addEventListener('DOMContentLoaded', () => {
+  populateQuickSelect();
+  const sel = document.getElementById('quick_kabupaten');
+  if (sel) {
+    sel.addEventListener('change', (e) => {
+      const entity = (e.target.value || '').trim();
+      if (!entity) {
+        document.getElementById('quickPredResult').style.display = 'none';
+        return;
+      }
+      quickPredictFetchAndRender(entity, { mode: 'test' });
+    });
+  }
+});
 document.getElementById('scroll-to-beranda')
   ?.addEventListener('click', ()=>{
     // collapse hero supaya atas halaman tinggal navbar
@@ -45,34 +46,110 @@ const fmtNum = (x, dec=0) =>
   (x==null || Number.isNaN(x)) ? '-' :
   new Intl.NumberFormat('id-ID', { maximumFractionDigits: dec, minimumFractionDigits: dec }).format(x);
 
-function normProv(s){return (s||"").toString().toLowerCase().replace(/provinsi|propinsi|prov\./g,"").replace(/\s+/g,"").replace(/[^\w]/g,"");}
 
 // --- replace existing fetchJsonSafe with this robust helper ---
-async function fetchJsonSafe(url, opts) {
-  const r = await fetch(url, opts);
-  const status = r.status;
-  let text = null;
+async function fetchJsonSafe(url, opts = {}) {
+  // opts passed directly to fetch (method, body, headers, ...)
+  let res;
   try {
-    text = await r.text();
-  } catch (e) {
-    text = null;
+    res = await fetch(url, opts);
+  } catch (networkErr) {
+    // network failure (DNS, offline, CORS, etc)
+    return {
+      ok: false,
+      status: 0,
+      statusText: networkErr && networkErr.message ? String(networkErr.message) : 'network error',
+      headers: {},
+      json: null,
+      text: null,
+      isFile: false,
+      error: networkErr
+    };
   }
 
-  let data = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      data = null;
+  const status = res.status;
+  const statusText = res.statusText || '';
+  const headers = {};
+  res.headers.forEach((v, k) => headers[k.toLowerCase()] = v);
+
+  // detect file-like responses (Excel, octet-stream, etc)
+  const ctype = (headers['content-type'] || '').toLowerCase();
+  const disposition = (headers['content-disposition'] || '').toLowerCase();
+  const isFile = ctype.includes('application/octet-stream') ||
+                 ctype.includes('application/vnd.ms-excel') ||
+                 ctype.includes('application/vnd.openxmlformats-officedocument') ||
+                 disposition.includes('attachment');
+
+  // try to read as text first (safe), but if file -> return blob
+  let text = null;
+  let json = null;
+  try {
+    if (isFile) {
+      // caller likely expects a download blob (Excel). Return minimal info and blob separately.
+      const blob = await res.blob();
+      return {
+        ok: res.ok,
+        status,
+        statusText,
+        headers,
+        json: null,
+        text: null,
+        isFile: true,
+        blob
+      };
+    } else {
+      text = await res.text();
+      if (text) {
+        // prefer parsing when content-type claims json
+        if (ctype.includes('application/json') || ctype.includes('text/json')) {
+          try { json = JSON.parse(text); } catch (e) { json = null; }
+        } else {
+          // be permissive: try parse anyway
+          try { json = JSON.parse(text); } catch (e) { json = null; }
+        }
+      }
     }
+  } catch (readErr) {
+    return {
+      ok: res.ok,
+      status,
+      statusText,
+      headers,
+      json: null,
+      text: null,
+      isFile,
+      error: readErr
+    };
   }
 
   return {
-    ok: r.ok,
+    ok: res.ok,
     status,
-    data,   // parsed JSON or null
-    text    // raw text (useful for debugging HTML errors)
+    statusText,
+    headers,
+    json,   // parsed JSON or null
+    text,   // raw text or null
+    isFile  // boolean
   };
+}
+
+
+function goToDetailPrediksi() {
+  // Pindah ke tab "Prediksi" saja tanpa set apa pun
+  const predNav = document.querySelector('.nav-link[data-section="prediksi"]');
+  if (predNav) {
+    predNav.click();
+  } else {
+    console.warn("Tab 'Prediksi' tidak ditemukan.");
+  }
+
+  // Optional: scroll ke atas tab prediksi biar user langsung lihat
+  setTimeout(() => {
+    const section = document.getElementById('prediksi');
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 200);
 }
 
 function fillSelect(selectId,records){
@@ -171,6 +248,19 @@ b_bulanSel?.addEventListener('change',()=>{
 });
 
 // ===== MAP (Beranda)
+function normProv(s){
+  if(!s) return "";
+  // trim + ke lowercase
+  s = s.toString().trim().toLowerCase();
+  // normalisasi unicode (hilangkan diakritik)
+  if(s.normalize) s = s.normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+  // hilangkan token umum yang bikin mismatch (provinsi, propinsi, prov., kab., kota, kep.)
+  s = s.replace(/\b(provinsi|propinsi|prov\.|kabupaten|kab\.|kota|kepulauan|kep\.)\b/g,'');
+  // hapus semua non-alphanumeric
+  s = s.replace(/[^a-z0-9]+/g,'');
+  // trim lagi
+  return s.trim();
+}
 let __PROV_GJ=null;
 async function getProvGeoJSON(){ 
   if(__PROV_GJ) return __PROV_GJ; 
@@ -226,6 +316,99 @@ async function showMapBeranda(){
 }
 window.showMapBeranda = showMapBeranda;
 
+// map-validation-inline.js
+(function(){
+  // jangan install dua kali
+  if(window._mapValidationInlineInstalled) return;
+  window._mapValidationInlineInstalled = true;
+
+  // ambil referensi elemen pesan (pastikan elemen sudah ada di DOM)
+  function getMsgEl(){
+    return document.getElementById('map-validation-inline');
+  }
+
+  function showInlineMessage(msg){
+    const el = getMsgEl();
+    if(!el) { alert(msg); return; } // fallback safety
+    el.textContent = msg;
+    el.classList.add('show');
+    // optional smaller style if message short
+    if(msg.length < 60) el.classList.add('small'); else el.classList.remove('small');
+  }
+  function hideInlineMessage(){
+    const el = getMsgEl();
+    if(!el) return;
+    el.classList.remove('show','small');
+    el.style.display = ''; // keep css control
+    // clear after short delay for better UX
+    setTimeout(()=>{ el.textContent=''; }, 400);
+  }
+
+  // simpan original jika ada
+  const originalShow = window.showMapBeranda && typeof window.showMapBeranda === 'function' ? window.showMapBeranda : null;
+
+  // override global
+  window.showMapBeranda = async function(){
+    // ambil values dari DOM (nama id sesuai HTML-mu)
+    const pulauEl = document.getElementById('pulau');
+    const tahunEl = document.getElementById('b_tahun');
+    const bulanEl = document.getElementById('b_bulan');
+    const mingguEl = document.getElementById('b_minggu');
+
+    const pulau = pulauEl ? (pulauEl.value || '').toString().trim() : '';
+    const tahun = tahunEl ? (tahunEl.value || '').toString().trim() : '';
+    const bulan = bulanEl ? (bulanEl.value || '').toString().trim() : '';
+    const minggu = mingguEl ? (mingguEl.value || '').toString().trim() : '';
+
+    // validasi: Pulau & Tahun wajib
+    const missing = [];
+    if(!pulau) missing.push('Pulau');
+    if(!tahun) missing.push('Tahun');
+
+    if(missing.length){
+      // tampilkan pesan inline, fokus ke field pertama kosong
+      showInlineMessage('Mohon lengkapi: ' + missing.join(' dan ') + ' terlebih dahulu.');
+      // fokus ke field pertama kosong (pulau -> tahun)
+      if(!pulau && pulauEl) pulauEl.focus();
+      else if(!tahun && tahunEl) tahunEl.focus();
+      return; // jangan lanjutkan memanggil original
+    }
+
+    // jika valid, sembunyikan pesan dan panggil fungsi asli
+    hideInlineMessage();
+
+    if(originalShow){
+      try{
+        // forwarded arguments & preserved context
+        return await originalShow.apply(this, arguments);
+      }catch(err){
+        // jika fungsi asli throw, log & beri fallback alert
+        console.error('Error in original showMapBeranda:', err);
+        const el = getMsgEl();
+        if(el) showInlineMessage('Terjadi kesalahan saat menampilkan peta. Lihat console.');
+        else alert('Terjadi kesalahan saat menampilkan peta.');
+        throw err;
+      }
+    }else{
+      // fallback safety (tidak seharusnya terjadi)
+      console.warn('Original showMapBeranda not found; validation passed but no map function to call.');
+    }
+  };
+
+  // non-invasive: enable minggu select when bulan change (only attach if elements exist)
+  try{
+    const bBulan = document.getElementById('b_bulan');
+    const bMinggu = document.getElementById('b_minggu');
+    if(bBulan && bMinggu && !bBulan._mapValidationInlineAttached){
+      bBulan._mapValidationInlineAttached = true;
+      bBulan.addEventListener('change', function(){
+        if(this.value) { bMinggu.disabled = false; }
+        else { bMinggu.disabled = true; bMinggu.value = ''; }
+      });
+    }
+  }catch(e){ /* ignore */ }
+
+})();
 
 
 
@@ -504,8 +687,6 @@ async function loadData(){
   }
 }
 
-
-
 window.loadData = loadData;
 
 // ===== PREDIKSI (compare 2 kota)
@@ -570,34 +751,7 @@ function _statsFromSeries(labels, values){
   return { n, avg, min, min_date, max, max_date, start, end, change_pct };
 }
 
-function _renderPredSummary(labels, seriesPred){
-  const box = document.getElementById('predSummary');
-  if (!box) return;
 
-  const s = _statsFromSeries(labels, seriesPred);
-  console.log('pred-summary stats =', s);
-
-  if (s.n === 0){
-    box.style.display = 'none';
-    return;
-  }
-  // tampilkan paksa (hapus inline style)
-  box.style.removeProperty('display');
-
-  const fmt = n => (n==null || Number.isNaN(n))? '-' : 'Rp '+new Intl.NumberFormat('id-ID').format(Math.round(n));
-  const fmtPct = n => (n==null || Number.isNaN(n))? '-' : (n>=0? '+' : '') + n.toFixed(2) + '%';
-
-  document.getElementById('predMaxVal').textContent  = fmt(s.max);
-  document.getElementById('predMaxDate').textContent = s.max_date ? _niceDate(s.max_date) : '—';
-  document.getElementById('predMinVal').textContent  = fmt(s.min);
-  document.getElementById('predMinDate').textContent = s.min_date ? _niceDate(s.min_date) : '—';
-  document.getElementById('predAvgVal').textContent  = fmt(s.avg);
-  document.getElementById('predCount').textContent   = `n = ${s.n} hari`;
-  document.getElementById('predChangePct').textContent = fmtPct(s.change_pct);
-  document.getElementById('predChangeNote').textContent = (s.start!=null && s.end!=null)
-      ? `${fmt(s.start)} → ${fmt(s.end)}`
-      : '—';
-}
 
 
 let _predChart = null;
@@ -631,6 +785,41 @@ const forceXTicksPlugin = {
 if (window.Chart) Chart.register(forceXTicksPlugin);
 
 // Pastikan plugin ter-register
+function getTestCutoff() {
+  try {
+    const el = document.getElementById('prediksi');
+    if (el && el.dataset && el.dataset.testCutoff) return el.dataset.testCutoff;
+  } catch(e){}
+  return '2025-07-01'; // fallback
+}
+
+// ---------- modal helper (sama seperti sebelumnya) ----------
+function showTestCutoffModal(cutoffIso) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('test-cutoff-modal');
+    if (!modal) {
+      // fallback simple confirm
+      const ok = confirm(`Mode 'test' tidak boleh melewati ${cutoffIso}.\nOK = ganti ke 'real', Cancel = batal.`);
+      return resolve(ok ? 'switch_mode' : 'cancel');
+    }
+    modal.style.display = 'block';
+    modal.setAttribute('aria-hidden','false');
+    const title = modal.querySelector('#tm-title');
+    if (title) title.innerHTML = `Mode <code>test</code> melebihi cutoff (${cutoffIso})`;
+    const btnSwitch = document.getElementById('tm-btn-switch');
+    const btnSetCut = document.getElementById('tm-btn-setcut');
+    const btnCancel = document.getElementById('tm-btn-cancel');
+
+    function cleanup(){ modal.style.display='none'; modal.setAttribute('aria-hidden','true'); btnSwitch.removeEventListener('click',onSwitch); btnSetCut.removeEventListener('click',onSet); btnCancel.removeEventListener('click',onCancel); }
+    function onSwitch(){ cleanup(); resolve('switch_mode'); }
+    function onSet(){ cleanup(); resolve('set_cutoff'); }
+    function onCancel(){ cleanup(); resolve('cancel'); }
+
+    btnSwitch.addEventListener('click', onSwitch);
+    btnSetCut.addEventListener('click', onSet);
+    btnCancel.addEventListener('click', onCancel);
+  });
+}
 
 function renderPredChart(labels, actual, predicted, cityLabel) {
   const canvas = document.getElementById('predChart');
@@ -714,23 +903,33 @@ function _renderPredSummaryFromAPI(predictedArray){
   const values = predictedArray.map(p => p.value ?? p.pred ?? null);
   _renderPredSummary(labels, values);
 }
-function _renderPredSummaryFromServer(s){
+
+function _renderPredSummaryFromServer(summaryObj){
   const box = document.getElementById('predSummary');
   if (!box) return;
+
+  // summaryObj expected like: { n, avg, min, min_date, max, max_date, start, end, change_pct }
+  const s = summaryObj || {};
+  if (!s || (s.n === 0)) {
+    box.style.display = 'none';
+    return;
+  }
   box.style.removeProperty('display');
 
-  const fmt = n => (n==null)? '-' : 'Rp '+new Intl.NumberFormat('id-ID').format(Math.round(n));
-  const fmtPct = n => (n==null)? '-' : (n>=0? '+' : '') + Number(n).toFixed(2) + '%';
+  const fmt = n => (n==null || Number.isNaN(n))? '-' : 'Rp '+new Intl.NumberFormat('id-ID').format(Math.round(n));
+  const fmtPct = n => (n==null || Number.isNaN(n))? '-' : (n>=0? '+' : '') + Number(n).toFixed(2) + '%';
 
-  document.getElementById('predMaxVal').textContent  = fmt(s.max);
-  document.getElementById('predMaxDate').textContent = s.max_date || '—';
-  document.getElementById('predMinVal').textContent  = fmt(s.min);
-  document.getElementById('predMinDate').textContent = s.min_date || '—';
-  document.getElementById('predAvgVal').textContent  = fmt(s.avg);
-  document.getElementById('predCount').textContent   = `n = ${s.n||0} hari`;
-  document.getElementById('predChangePct').textContent = fmtPct(s.change_pct);
-  document.getElementById('predChangeNote').textContent =
-    (s.start!=null && s.end!=null) ? `${fmt(s.start)} → ${fmt(s.end)}` : '—';
+  _safeSetText('predMaxVal',  fmt(s.max));
+  _safeSetText('predMaxDate', s.max_date ? _niceDate(s.max_date) : '—');
+  _safeSetText('predMinVal',  fmt(s.min));
+  _safeSetText('predMinDate', s.min_date ? _niceDate(s.min_date) : '—');
+  _safeSetText('predAvgVal',  fmt(s.avg));
+  _safeSetText('predCount',   `n = ${s.n} hari`);
+
+  // optional fields (may not be present in HTML)
+  const changeText = (s.start!=null && s.end!=null) ? `${fmt(s.start)} → ${fmt(s.end)}` : '—';
+  _safeSetText('predChangePct', fmtPct(s.change_pct));
+  _safeSetText('predChangeNote', changeText);
 }
 async function fetchPredictRange(citySlug, startISO, endISO, mode = 'test') {
    // normalisasi mode
@@ -902,6 +1101,160 @@ async function fetchPredictRange(citySlug, startISO, endISO, mode = 'test') {
   loadCities();
 })();
 
+async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'test' }) {
+  if (!entitySlug) return;
+  const loading = document.getElementById('quickPredLoading');
+  const resultBox = document.getElementById('quickPredResult');
+
+  const elTodayVal = document.getElementById('quickTodayValue');
+  const elTodayDate = document.getElementById('quickTodayDate');
+  const elTomorrowVal = document.getElementById('quickTomorrow');
+  const elTomorrowDate = document.getElementById('quickTomorrowDate');
+  const el7Val = document.getElementById('quick7Days');
+  const el7Date = document.getElementById('quick7DaysDate');
+  const el30Val = document.getElementById('quick30Days');
+  const el30Date = document.getElementById('quick30DaysDate');
+  const chartCanvas = document.getElementById('quickPredChart');
+
+  const fmtMoney = n => (n == null || Number.isNaN(n)) ? '-' : 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(n));
+  const niceDate = iso => {
+    try { const d = new Date(iso); return d.toLocaleDateString('id-ID', { weekday:'long', year:'numeric', month:'long', day:'numeric' }); }
+    catch { return iso; }
+  };
+  const shortDate = iso => {
+    try { const d = new Date(iso); return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }); }
+    catch { return iso; }
+  };
+
+  // UI prepare
+  if (loading) loading.style.display = '';
+  if (resultBox) resultBox.style.display = 'none';
+
+  try {
+    const url = `/api/quick_predict?city=${encodeURIComponent(entitySlug)}&mode=${encodeURIComponent(opts.mode||'test')}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const t = await res.text().catch(()=>res.statusText);
+      throw new Error(`${res.status} ${t}`);
+    }
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || 'no ok');
+
+    // fill main today
+    if (elTodayVal) elTodayVal.textContent = fmtMoney(j.last_value);
+    if (elTodayDate) elTodayDate.textContent = niceDate(j.last_actual);
+
+    // fill horizons
+    if (j.predictions && j.predictions["1"]) {
+      elTomorrowVal.textContent = fmtMoney(j.predictions["1"].value);
+      elTomorrowDate.textContent = shortDate(j.predictions["1"].date);
+    } else {
+      elTomorrowVal.textContent = '-';
+      elTomorrowDate.textContent = '';
+    }
+    if (j.predictions && j.predictions["7"]) {
+      el7Val.textContent = fmtMoney(j.predictions["7"].value);
+      el7Date.textContent = shortDate(j.predictions["7"].date);
+    } else {
+      el7Val.textContent = '-'; el7Date.textContent = '';
+    }
+    if (j.predictions && j.predictions["10"]) {
+      el30Val.textContent = fmtMoney(j.predictions["10"].value);
+      el30Date.textContent = shortDate(j.predictions["10"].date);
+    } else {
+      el30Val.textContent = '-'; el30Date.textContent = '';
+    }
+
+    // render small chart: history + predicted points
+    if (chartCanvas && (Array.isArray(j.history) || j.predictions)) {
+      const labels = [];
+      const dataVals = [];
+
+      // history
+      if (Array.isArray(j.history)) {
+        for (const p of j.history) {
+          labels.push(p.date);
+          dataVals.push(Number(p.value));
+        }
+      }
+
+      // append predicted up to 10 days (preserve label order)
+      const predsArr = [];
+      for (const k of ['1','7','10']) {
+        if (j.predictions && j.predictions[k]) predsArr.push(j.predictions[k]);
+      }
+      // to show fuller curve, try to request longer preds if desired — for now add predsArr in chronological order
+      predsArr.sort((a,b)=> (new Date(a.date)) - (new Date(b.date)) );
+      for (const p of predsArr) {
+        labels.push(p.date);
+        dataVals.push(Number(p.value));
+      }
+
+      try {
+        if (window.quickChartRef && window.quickChartRef.destroy) {
+          window.quickChartRef.destroy();
+          window.quickChartRef = null;
+        }
+        if (typeof Chart !== 'undefined') {
+          window.quickChartRef = new Chart(chartCanvas.getContext('2d'), {
+            type: 'line',
+            data: { labels: labels, datasets: [{ label: 'Harga (Rp/L)', data: dataVals, tension: 0.2, fill:false }]},
+            options: { plugins:{legend:{display:false}}, scales:{ x:{display:true}, y:{display:true} }, responsive:true, maintainAspectRatio:false }
+          });
+        }
+      } catch (err) { console.warn("quick chart error", err); }
+    }
+
+    // show result
+    if (loading) loading.style.display = 'none';
+    if (resultBox) resultBox.style.removeProperty('display');
+
+    return j;
+  } catch (err) {
+    console.error("quickPredict error:", err);
+    if (loading) loading.style.display = 'none';
+    if (resultBox) {
+      resultBox.style.removeProperty('display');
+      document.getElementById('quickTodayValue').textContent = 'Gagal memuat';
+      document.getElementById('quickTodayDate').textContent = '';
+    }
+    return null;
+  }
+}
+
+// Isi select #quick_kabupaten dari endpoint /api/cities_full
+async function populateQuickSelect() {
+  const sel = document.getElementById('quick_kabupaten');
+  if (!sel) {
+    console.warn("populateQuickSelect: #quick_kabupaten not found");
+    return;
+  }
+
+  try {
+    const resp = await fetch('/api/cities_full', { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const arr = await resp.json();
+
+    // Keep the first placeholder option if present
+    const firstOpt = sel.querySelector('option') ? sel.querySelector('option').outerHTML : '<option value="">-- Pilih --</option>';
+    sel.innerHTML = firstOpt;
+
+    arr.forEach(item => {
+      // server returns objects like { entity, slug, label }
+      const opt = document.createElement('option');
+      opt.value = item.entity || item.slug || (item.label || '').toLowerCase().replace(/\s+/g,'_');
+      opt.textContent = item.label || item.entity || opt.value;
+      sel.appendChild(opt);
+    });
+
+    console.log(`populateQuickSelect: loaded ${arr.length} cities`);
+  } catch (err) {
+    console.warn('populateQuickSelect failed, keeping existing options:', err);
+    // leave existing static options in place as fallback
+  }
+}
+
+
 async function loadPrediksi(){
   // fallback ke #kabupaten kalau #kabupaten_a tidak ada
   console.log("loadPrediksi called");
@@ -917,6 +1270,26 @@ async function loadPrediksi(){
   if (!citySlug) { alert('Pilih Kabupaten/Kota.'); return; }
   if (!start || !end) { alert('Tanggal mulai & akhir wajib diisi.'); return; }
 
+  try {
+    // only enforce cutoff for mode === 'test'
+    if ((mode || '').toString().toLowerCase() === 'test') {
+      const cutoffIso = getTestCutoff();
+      const endDate = new Date(end + 'T00:00:00');
+      const cutoffDate = new Date(cutoffIso + 'T00:00:00');
+      if (endDate > cutoffDate) {
+        const action = await showTestCutoffModal(cutoffIso);
+        if (action === 'cancel') return;                   // user abort
+        if (action === 'switch_mode') {                    // switch to real
+          if (predModeEl) { predModeEl.value = 'real'; mode = 'real'; }
+        } else if (action === 'set_cutoff') {              // clamp inputs
+          if (endInput) endInput.value = cutoffIso;
+          if (new Date(start + 'T00:00:00') > cutoffDate && startInput) startInput.value = cutoffIso;
+        }
+      }
+    }
+  } catch(err){
+    console.warn("cutoff validation error", err);
+  }
   try {
     ph.style.display = 'none';
 
@@ -1441,49 +1814,149 @@ function updateEvalCards(metrics) {
   const r2   = metrics?.r2 ?? null;
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  set('mseValue',  mse==null ? '-' : `Rp ${fmt0(mse)}`);
-  set('rmseValue', rmse==null ? '-' : `Rp ${fmt0(rmse)}`);
+  set('mseValue',  mse == null ? '-' : fmt0(mse));
+  set('rmseValue', rmse == null ? '-' : fmt0(rmse));
   set('mapeValue', fmt2(mape));
-  set('r2Value',   r2==null ? '-' : Number(r2).toFixed(3));
+  set('r2Value',   r2 == null ? '-' : Number(r2).toFixed(3));
 
   // kalau pakai grade:
   // const grade = r2==null ? '-' : (r2>=0.90?'A':r2>=0.85?'A-':r2>=0.80?'B+':r2>=0.75?'B':r2>=0.70?'B-':'C');
   // set('performanceGrade', grade);
 }
 
-async function fetchAndRenderEvalForCity(cityKey){
+/**
+ * Try several slug variants and call /api/eval_summary?city=...
+ * On success: call updateEvalCards(metrics) and optionally show label.
+ * On fail : set cards to '-' (via updateEvalCards with null) and log.
+ */
+
+// Replace earlier multi-candidate function with this single-call version
+async function fetchAndRenderEvalForCity(cityInput) {
+  if (!cityInput) {
+    updateEvalCards(null);
+    return null;
+  }
+
   try {
-    // encode untuk aman (entity kadang ada underscore/dots)
-    const url = `/api/eval_summary?city=${encodeURIComponent(cityKey)}`;
-    const res = await fetch(url);
-    if (res.status === 404){
-      console.info("Eval summary not found for", cityKey);
-      // sembunyikan atau kosongkan area eval di UI
-      const el = document.getElementById('evalSummaryBox');
-      if (el) el.style.display = 'none';
+    console.debug("fetch eval single call for:", cityInput);
+    const url = `/api/eval_summary?city=${encodeURIComponent(cityInput)}`;
+    const resp = await fetch(url, { cache: 'no-store' });
+
+    if (resp.status === 404) {
+      console.info("eval not found (404) for:", cityInput);
+      updateEvalCards(null);
       return null;
     }
-    if (!res.ok){
-      console.warn("Gagal fetch eval_summary:", res.status, await res.text());
+    if (!resp.ok) {
+      const t = await resp.text().catch(()=>resp.statusText);
+      console.warn("eval fetch failed:", resp.status, t);
+      updateEvalCards(null);
       return null;
     }
-    const j = await res.json();
-    // tampilkan ke UI: contoh sederhana
-    const box = document.getElementById('evalSummaryBox');
-    if (box){
-      box.style.removeProperty('display');
-      // asumsikan ada elemen child: #eval_mae, #eval_r2
-      document.getElementById('eval_city').textContent = j.city || cityKey;
-      _safeSetText('eval_mae', j.metrics?.mae ?? '-');
-      _safeSetText('eval_r2',  j.metrics?.r2  ?? '-');
+
+    const j = await resp.json();
+    if (j && j.ok && j.metrics) {
+      updateEvalCards(j.metrics);
+      const labelEl = document.getElementById('evalCityLabel');
+      if (labelEl && j.city) labelEl.textContent = j.city;
+      return j;
+    } else {
+      // server might respond with metrics directly
+      if (j && j.metrics) {
+        updateEvalCards(j.metrics);
+        return j;
+      }
+      updateEvalCards(null);
+      return null;
     }
-    return j;
-  } catch (e) {
-    console.error("fetchAndRenderEvalForCity error:", e);
+  } catch (err) {
+    console.warn("fetchAndRenderEvalForCity error:", err);
+    updateEvalCards(null);
     return null;
   }
 }
 
+// --- helper tambahan untuk HTML safety (supaya tidak error di innerHTML) ---
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// --- fix: normalisasi data upload dari Flask agar chart bisa muncul ---
+function normalizeFullResultForRender(result) {
+  const predsObj = result.predictions || {};
+  const predsArr = Object.values(predsObj)
+    .filter(p => p && p.date && p.value != null)
+    .sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  const pred_dates = predsArr.map(p => p.date);
+  const pred_values = predsArr.map(p => Number(p.value));
+
+  // fallback: kalau tidak ada trend (aktual), isi dengan prediksi juga
+  const trend_values = result.trend?.values || pred_values;
+
+  return {
+    mode: 'full',
+    city: result.city || '',
+    n_total: result.n_total ?? null,
+    test_days: result.test_days ?? null,
+    metrics: result.metrics || {},
+    pack_path: result.pack_path || null,
+    predictions: predsObj,
+    pred_series: {
+      dates: pred_dates,
+      actual: trend_values, // bisa pakai aktual kalau tersedia
+      pred: pred_values
+    },
+    trend: {
+      dates: pred_dates,
+      values: trend_values
+    },
+    actual: pred_dates.map((d,i)=>({date:d,value:trend_values[i]})),
+    predicted: pred_dates.map((d,i)=>({date:d,value:pred_values[i]}))
+  };
+}
+
+
+// helper: ubah result (single) jadi payload yang renderResults paham
+function normalizeFullResultForRender(result) {
+  // result.predictions: { "1": {date, value}, "7": {...}, ... } (misal)
+  const predsObj = result.predictions || {};
+  // convert predsObj => arrays sorted by date
+  const predsArr = Object.values(predsObj).filter(Boolean).slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+  const pred_dates = predsArr.map(p => p.date);
+  const pred_values = predsArr.map(p => (p.value == null ? null : Number(p.value)));
+
+  // construct a payload acceptable for renderResults
+  const payload = {
+    mode: 'full',
+    city: result.city || '',
+    n_total: result.n_total ?? null,
+    test_days: result.test_days ?? null,
+    metrics: result.metrics || {},
+    pack_path: result.pack_path || null,
+    // put predictions as object (same shape) so renderResults can pick them
+    predictions: predsObj,
+    // create pred_series/trend (trend = actual historical; here we don't have actual so use empty)
+    pred_series: {
+      dates: pred_dates,
+      pred: pred_values
+    },
+    // For compatibility, also provide 'trend' as empty or same as pred_dates with nulls
+    trend: {
+      dates: pred_dates,
+      values: Array(pred_values.length).fill(null)
+    },
+    // also provide 'predicted' & 'actual' arrays to match other branches
+    actual: [], 
+    predicted: predsArr.map(p => ({ date: p.date, value: Number(p.value) })),
+  };
+  return payload;
+}
 
 async function loadUpload() {
   console.log("loadUpload called");
@@ -1555,12 +2028,12 @@ function downloadTemplateExcel() {
   downloadTemplateCSV();
 }
 
-// utama: kirim file ke backend
-// GANTI fungsi saveAndPredict dengan ini
-// --- replace saveAndPredict with this defensive version ---
+
 async function saveAndPredict() {
   const fileInput = document.getElementById('fileInput');
-  if (!fileInput || !fileInput.files || !fileInput.files[0]) return alert('Pilih file dulu');
+  if (!fileInput || !fileInput.files || !fileInput.files[0])
+    return alert('Pilih file dulu');
+
   const file = fileInput.files[0];
   const saveBtn = document.getElementById('saveUploadBtn');
   const loading = document.getElementById('uploadLoading');
@@ -1581,17 +2054,21 @@ async function saveAndPredict() {
 
     console.log('upload response (safe):', resp);
 
-    // Jika status non-OK, tampilkan detail (server bisa ngirim 400 dengan JSON)
     if (!resp.ok) {
       const reason = resp.data ? JSON.stringify(resp.data) : (resp.text || `HTTP ${resp.status}`);
       throw new Error(reason);
     }
 
-    // Ambil parsed JSON kalau ada; kalau tidak ada fallback ke text (dan coba parse)
-    let data = resp.data;
+    // Parse JSON body
+    let data = resp.data || null;
     if (!data && resp.text) {
       try { data = JSON.parse(resp.text); }
-      catch (e) { /* tetap null */ }
+      catch (e) {}
+    }
+
+    // 🔹 Normalize nested shape
+    if (data && data.data && typeof data.data === 'object') {
+      data = { ...data, ...data.data };
     }
 
     if (!data) {
@@ -1601,33 +2078,49 @@ async function saveAndPredict() {
 
     console.log('upload data parsed:', data);
 
-    // HANDLE QUICK
+    // === HANDLERS ===
     if (data.mode === 'quick' || data.stats) {
       renderResults(data);
       return;
     }
 
-    // HANDLE FULL (server kamu mengembalikan single-city 'full' object)
-    if (data.mode === 'full') {
-      // render same UI as quick, plus show pack/metrics etc
-      renderResults(data);
+    if (Array.isArray(data.results) && data.results.length > 0) {
+  const first = data.results[0];
+  console.log('upload first result:', first);
 
-      // optional: show detailed results list if response included `results` array
-      const ul = document.getElementById('uploadFullResultsList');
-      if (ul && Array.isArray(data.results)) {
-        ul.innerHTML = data.results.map(r => {
-          if (r.ok) return `<li><b>${r.city}</b>: OK — best_r2=${r.best_r2 ?? '-'}</li>`;
-          return `<li><b>${r.city}</b>: FAIL — ${r.reason ?? JSON.stringify(r)}</li>`;
-        }).join('');
-        document.getElementById('uploadFullSummary')?.style.removeProperty('display');
-      }
+  // if server already provided trend or stats, render it directly
+  if ((first.trend && Array.isArray(first.trend.dates) && Array.isArray(first.trend.values)) ||
+      (first.stats && (first.stats.n_points || first.stats.n_points === 0))) {
+    renderResults(first);
+  } else if (typeof normalizeFullResultForRender === 'function') {
+    // fallback: use normalizer if available
+    const payloadForRender = normalizeFullResultForRender(first);
+    renderResults(payloadForRender);
+  } else {
+    // last-resort: render root data (may still work)
+    renderResults(data);
+  }
 
-      // show uploadResults section
-      document.getElementById('uploadResults')?.style.removeProperty('display');
-      return;
-    }
+  const ul = document.getElementById('uploadFullResultsList');
+  if (ul) {
+    ul.innerHTML = data.results.map(r =>
+      r.ok
+        ? `<li><b>${escapeHTML ? escapeHTML(r.city || '—') : (r.city||'—')}</b>: OK — best_r2=${r.best_r2 ?? '-'}</li>`
+        : `<li><b>${escapeHTML ? escapeHTML(r.city || '—') : (r.city||'—')}</b>: FAIL — ${escapeHTML ? escapeHTML(r.reason ?? JSON.stringify(r)) : (r.reason??JSON.stringify(r))}</li>`
+    ).join('');
+    document.getElementById('uploadFullSummary')?.style.removeProperty('display');
+  }
 
-    // fallback: jika ada stats/predictions di bentuk lain
+  document.getElementById('uploadResults')?.style.removeProperty('display');
+  return;
+} else {
+  renderResults(data);
+  return;
+}
+
+
+
+
     if (data.stats || data.predictions || data.trend || data.pred_series) {
       renderResults(data);
       return;
@@ -1647,8 +2140,6 @@ async function saveAndPredict() {
 
 
 
-// render hasil: update stats dan chart
-// global chart holders (safe)
 window._uploadTrendChart = window._uploadTrendChart || null;
 window._uploadPredChart  = window._uploadPredChart  || null;
 
@@ -1720,49 +2211,111 @@ function renderResults(payload){
   }
 
   // --- pred vs actual chart: payload.pred_series or payload.predicted + payload.actual (predict_range style) ---
+    // --- PREDICTION-ONLY CHART (safe: no date adapter required) ---
   let predChartLabels = [];
-  let predActual = [];
-  let predPred = [];
+  let predValues = [];
 
-  if (payload.pred_series && payload.pred_series.dates) {
-    predChartLabels = payload.pred_series.dates;
-    predActual = payload.pred_series.actual || [];
-    predPred = payload.pred_series.pred || [];
-  } else if (payload.trend && payload.predictions_series) {
-    // fallback if weird shape
-    predChartLabels = payload.trend.dates || [];
-    predActual = payload.trend.values || [];
-    predPred = payload.predictions_series.values || [];
-  } else if (payload.actual && payload.predicted) {
-    predChartLabels = (payload.actual || []).map(p=>p.date);
-    predActual = (payload.actual || []).map(p=>p.value);
-    predPred = (payload.predicted || []).map(p=>p.value);
+  if (payload?.pred_series && Array.isArray(payload.pred_series.dates)) {
+    predChartLabels = payload.pred_series.dates.slice();
+    if (Array.isArray(payload.pred_series.pred)) {
+      predValues = payload.pred_series.pred.map(v => (v == null ? null : Number(v)));
+    } else {
+      predValues = (payload.pred_series.actual || []).map(v => (v == null ? null : Number(v)));
+    }
+  } else if (payload?.predictions && typeof payload.predictions === 'object') {
+    const predsArr = Object.values(payload.predictions || {})
+      .filter(Boolean)
+      .map(p => ({ date: p.date, value: (p.value == null ? null : Number(p.value)) }))
+      .sort((a,b)=> new Date(a.date) - new Date(b.date));
+    predChartLabels = predsArr.map(p => p.date);
+    predValues = predsArr.map(p => p.value);
+  } else if (Array.isArray(payload?.predicted)) {
+    const arr = payload.predicted.map(p => ({ date: p.date, value: (p.value == null ? null : Number(p.value)) }))
+      .sort((a,b)=> new Date(a.date) - new Date(b.date));
+    predChartLabels = arr.map(p => p.date);
+    predValues = arr.map(p => p.value);
   } else {
-    // try using trend for actual and shifted actual as pred
-    predChartLabels = trend.dates || [];
-    predActual = trend.values || [];
-    predPred = (trend.values || []).slice(0); predPred.unshift(null); predPred.pop();
+    // fallback 7 hari dari akhir trend
+    const tdates = (trend && Array.isArray(trend.dates)) ? trend.dates.slice() : [];
+    const tvals  = (trend && Array.isArray(trend.values)) ? trend.values.slice() : [];
+    if (tdates.length) {
+      const lastDate = new Date(tdates[tdates.length-1] + 'T00:00:00');
+      for (let i=1;i<=7;i++){
+        const d = new Date(lastDate);
+        d.setDate(lastDate.getDate() + i);
+        predChartLabels.push(d.toISOString().slice(0,10));
+        predValues.push(tvals.length ? Number(tvals[tvals.length-1]) : null);
+      }
+    }
   }
 
   try {
-    const ctx2 = document.getElementById('uploadPredChart')?.getContext?.('2d');
-    if (ctx2) {
-      if (window._uploadPredChart) window._uploadPredChart.destroy();
-      window._uploadPredChart = new Chart(ctx2, {
-        type: 'line',
-        data: {
-          labels: predChartLabels || [],
-          datasets: [
-            { label: 'Actual', data: predActual || [], pointRadius:0, tension:.2 },
-            { label: 'Prediction', data: predPred || [], pointRadius:0, tension:.2, borderDash:[6,4] }
-          ]
-        },
-        options: { responsive: true }
-      });
+    const canvas = document.getElementById('uploadPredChart');
+    const ctx2 = canvas?.getContext?.('2d');
+    if (!ctx2) throw new Error('Canvas #uploadPredChart tidak ditemukan');
+
+    // Hancurkan chart lama (cara aman)
+    try {
+      // Chart.getChart tersedia di Chart.js v3+
+      const existing = (typeof Chart.getChart === 'function') ? Chart.getChart(canvas) : window._uploadPredChart;
+      if (existing && typeof existing.destroy === 'function') existing.destroy();
+    } catch(e){
+      // fallback: jika kita menyimpan global reference
+      if (window._uploadPredChart && typeof window._uploadPredChart.destroy === 'function') {
+        window._uploadPredChart.destroy();
+      }
     }
+    window._uploadPredChart = null;
+
+    // Buat chart baru — pakai 'category' untuk sumbu X (tanggal string),
+    // sehingga tidak membutuhkan adapter waktu eksternal.
+    window._uploadPredChart = new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels: predChartLabels || [],
+        datasets: [{
+          label: 'Prediksi',
+          data: predValues || [],
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 3,
+          spanGaps: true
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const v = ctx.parsed.y;
+                if (v == null || Number.isNaN(Number(v))) return 'Tidak ada data';
+                return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(Number(v)));
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: 'category', // <- penting: tidak perlu date adapter
+            title: { display: true, text: 'Tanggal' },
+            ticks: { maxRotation: 45, autoSkip: true }
+          },
+          y: {
+            title: { display: true, text: 'Harga (Rp)' },
+            ticks: {
+              callback: (v) => v == null ? '' : 'Rp ' + new Intl.NumberFormat('id-ID').format(v)
+            }
+          }
+        },
+        interaction: { mode: 'index', intersect: false }
+      }
+    });
   } catch (e) {
-    console.error('renderResults: pred chart error', e);
+    console.error('renderResults: pred-only chart error', e);
   }
+
 
   // --- full summary UI (if payload has training info) ---
   const fullSummary = document.getElementById('uploadFullSummary');
@@ -1799,12 +2352,6 @@ function downloadTemplateExcel() {
   downloadTemplateCSV();
 }
 
-
-
-// ===== Patch kecil: pastikan Upload link ada & kliknya memanggil loadUpload() + show section =====
-// -----------------------------
-// Single delegated nav handler
-// -----------------------------
 document.addEventListener('DOMContentLoaded', () => {
   const nav = document.querySelector('.top-nav') || document.querySelector('nav');
   if (!nav) return;
@@ -1870,4 +2417,19 @@ document.addEventListener('DOMContentLoaded', () => {
       ink.style.left  = (rect.left - parent.left) + 'px';
     }
   }
+});
+
+// ====== SCROLL TO BERANDA FIX (universal, works meskipun 1 file) ======
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('#scroll-to-beranda');
+  if (!btn) return;
+  e.preventDefault();
+
+  console.log('[scroll-to-beranda] clicked!');
+
+  document.body.classList.add('hero-collapsed');
+  document.querySelector('.nav-link[data-section="beranda"]')?.click();
+  document.getElementById('beranda')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  try { history.replaceState(null, '', '#beranda'); } catch (_) {}
 });

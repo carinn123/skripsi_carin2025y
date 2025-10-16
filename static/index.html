@@ -51,7 +51,9 @@
         <a href="#" class="nav-link active" data-section="beranda">🏠 Beranda</a>
         <a href="#" class="nav-link" data-section="tren">📈 Tinjauan Tren</a>
         <a href="#" class="nav-link" data-section="prediksi">🔮 Prediksi</a>
-        <a href="#" class="nav-link" data-section="upload">🧪 Evaluasi</a>
+        <a href="#" class="nav-link" data-section="upload">🧪 Upload</a>
+       <a href="#" class="nav-link" data-section="tentang">ℹ️ Tentang</a>
+
       </nav>
     </div>
   </header>
@@ -63,20 +65,18 @@
       <!-- ====== BERANDA ====== -->
       <div class="content-section active" id="beranda">
         <h2 class="section-title">Selamat Datang di Sistem Prediksi Harga Minyak Goreng</h2>
-        <div class="input-section">
-        <div class="input-row">
-          <div class="input-group">
-            <label for="quick_kabupaten">Pilih Kabupaten/Kota</label>
-            <select id="quick_kabupaten" onchange="loadQuickPrediction()">
-              <option value="">-- Pilih Kabupaten/Kota --</option>
-              <option value="jakarta">Jakarta Pusat</option>
-              <option value="bandung">Bandung</option>
-              <option value="surabaya">Surabaya</option>
-              <option value="medan">Medan</option>
-            </select>
-          </div>
-        </div>
-      </div>
+       <div class="input-group">
+  <label for="quick_kabupaten">Pilih Kabupaten/Kota (Quick)</label>
+  <select id="quick_kabupaten" onchange="loadQuickPredictionNoDate(this.value)">
+    <option value="">-- Pilih --</option>
+    <!-- gunakan slug yang server kenali jika memungkinkan -->
+    <option value="kota_administrasi_jakarta_pusat">Jakarta Pusat</option>
+    <option value="kota_bandung">Bandung</option>
+    <option value="kota_surabaya">Surabaya</option>
+    <option value="kota_medan">Medan</option>
+  </select>
+</div>
+
 
       <!-- Loading State -->
       <div id="quickPredLoading" class="loading-state">
@@ -89,7 +89,7 @@
         
         <!-- Prediksi Hari Ini -->
         <div class="today-card">
-          <div class="today-label">Prediksi Harga Hari Ini</div>
+          <div class="today-label">Harga Data Actual (terakhir)</div>
           <div class="today-value" id="quickTodayValue">Rp 15.200</div>
           <div class="today-date" id="quickTodayDate">Selasa, 14 Oktober 2025</div>
         </div>
@@ -167,13 +167,15 @@
               <select id="b_minggu" disabled>
                 <option value="">— Semua Minggu —</option>
                 <option value="1">1</option><option value="2">2</option>
-                <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+                <option value="3">3</option><option value="4">4</option>
               </select>
             </div>
             <div class="input-group">
               <button class="btn" onclick="showMapBeranda()">Tampilkan
                 <span class="loading" id="b_loading" style="display:none;"></span>
               </button>
+              <div id="map-validation-inline" aria-live="polite" style="display:none;"></div>
+</div>
             </div>
           </div>
         </div>
@@ -181,17 +183,17 @@
         <div class="info-box">
           <h3>Tentang Sistem</h3>
           <p>Sistem ini menggunakan <strong>Gradient Boosting</strong> untuk memprediksi harga minyak goreng berdasarkan data historis PIHPS. Di bawah ini adalah <strong>peta harga rata-rata per provinsi</strong> dengan kategori warna:
-            <span style="color:#2ecc71;font-weight:600;">Hijau</span> (rendah),
-            <span style="color:#f1c40f;font-weight:600;">Kuning</span> (sedang),
-            <span style="color:#e74c3c;font-weight:600;">Merah</span> (tinggi).
+            <span style="color:#2ecc71;font-weight:600;">Hijau</span> (Q1),
+            <span style="color:#f1c40f;font-weight:600;">Kuning</span> (Q2),
+            <span style="color:#e74c3c;font-weight:600;">Merah</span> (Q3).
           </p>
         </div>
 
         <div id="map"></div>
         <div class="legend">
-          <span><i style="background:#2ecc71"></i> Rendah</span>
-          <span><i style="background:#f1c40f"></i> Sedang</span>
-          <span><i style="background:#e74c3c"></i> Tinggi</span>
+          <span><i style="background:#2ecc71"></i> Q1</span>
+          <span><i style="background:#f1c40f"></i> Q2</span>
+          <span><i style="background:#e74c3c"></i> Q3</span>
         </div>
 
         <div class="stats-grid" style="margin-top:1rem">
@@ -199,67 +201,7 @@
           <div class="stat-card"><div class="stat-value" id="statScope">-</div><div class="stat-label">Periode</div></div>
           <div class="stat-card"><div class="stat-value" id="statLast">-</div><div class="stat-label">Last Actual</div></div>
         </div>
-        <!-- ====== TOP 5 KAB/KOTA (BERANDA) ====== -->
-        <section class="card-section" id="beranda-top5">
-  <h2 class="section-title">Top N Rata-rata Harga per Kab/Kota</h2>
-
-  <div class="input-section">
-    <div class="input-row">
-      <div class="input-group" style="min-width:180px;">
-        <label for="b_top_order">Urutan</label>
-        <select id="b_top_order">
-          <option value="desc">Tertinggi</option>
-          <option value="asc">Terendah</option>
-        </select>
-      </div>
-
-      <div class="input-group" style="min-width:180px;">
-        <label for="b_top_tahun">Tahun</label>
-        <select id="b_top_tahun">
-          <option value="">-- Pilih Tahun --</option>
-          <option value="2020">2020</option><option value="2021">2021</option>
-          <option value="2022">2022</option><option value="2023">2023</option>
-          <option value="2024">2024</option><option value="2025">2025</option>
-        </select>
-      </div>
-
-      <div class="input-group" style="min-width:160px;">
-        <label for="b_top_limit">Jumlah (Top-N)</label>
-        <input id="b_top_limit" type="number" min="1" max="200" value="5" />
-      </div>
-
-      <div class="input-group" style="align-self:flex-end;">
-        <button class="btn" id="btnTop5">
-          Tampilkan
-          <span class="loading" id="top5_loading" style="display:none;"></span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div class="table-card">
-    <table class="nice-table" id="top5Table">
-      <thead>
-        <tr>
-          <th style="width:52px">#</th>
-          <th>Kabupaten/Kota</th>
-          <th>Provinsi</th>
-          <th style="text-align:right">Rata-rata (Rp/L)</th>
-          <th style="text-align:right">Min</th>
-          <th style="text-align:right">Max</th>
-          <th style="text-align:right">n</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td colspan="7" style="text-align:center;color:var(--muted)">
-            Pilih tahun lalu klik <b>Tampilkan</b>.
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-        </section>
+       
         <section class="card-section" id="regional-correlation">
   <h2 class="section-title">Eksplor Kab/Kota per Pulau atau Provinsi</h2>
 
@@ -506,6 +448,40 @@
     -->
   </div>
 </div>
+<!-- ===== CUT-OFF MODAL & CUT-OFF CONFIG ===== -->
+<!-- meletakkan data-test-cutoff di wrapper prediksi supaya server bisa render dinamis -->
+<!-- Jika kamu ingin server yang menentukan cutoff, set attribute ini saat render server-side -->
+<script>
+  // If you prefer server-side rendering, server can inject a script like:
+  // document.addEventListener('DOMContentLoaded', () => {
+  //   document.getElementById('prediksi').dataset.testCutoff = '2025-07-01';
+  // });
+</script>
+
+<!-- Modal markup -->
+<div id="test-cutoff-modal" class="tm-modal" style="display:none" aria-hidden="true">
+  <div class="tm-backdrop" aria-hidden="true"></div>
+  <div class="tm-dialog" role="dialog" aria-modal="true" aria-labelledby="tm-title">
+    <h3 id="tm-title">Mode <code>test</code> melebihi cutoff</h3>
+    <p>Rentang waktu yang Anda pilih melewati batas untuk <strong>Mode = Test</strong>.
+      Mode <strong>test</strong> tidak boleh melewati <strong>1 Juli 2025</strong></p>
+    <div class="tm-actions">
+      <button id="tm-btn-switch" class="btn">Ganti ke <code>real</code></button>
+      <button id="tm-btn-setcut" class="btn">Set end ke cutoff</button>
+      <button id="tm-btn-cancel" class="btn btn-ghost">Batal</button>
+    </div>
+  </div>
+</div>
+
+<style>
+/* minimal modal styling - cocok untuk tema app; sesuaikan bila perlu */
+.tm-modal .tm-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:1200; }
+.tm-modal .tm-dialog{ position:fixed; left:50%; top:40%; transform:translate(-50%,-40%); background:#fff; padding:1rem 1.25rem; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.12); width: min(560px, 94%); z-index:1201; }
+.tm-modal .tm-dialog h3{ margin:0 0 .5rem 0; font-size:1.05rem; }
+.tm-modal .tm-actions{ display:flex; gap:.5rem; justify-content:flex-end; margin-top:.75rem; }
+.btn{ padding:.45rem .75rem; border-radius:.5rem; background:var(--green,#1abc9c); color:#fff; border:0; cursor:pointer; font-weight:600; }
+.btn-ghost{ background:transparent; color:#333; border:1px solid #ddd; }
+</style>
 
 
 <!-- ===== UPLOAD DATA SECTION (TAB KE-4) ===== -->
@@ -580,72 +556,322 @@
   </div>
 
   <!-- Results Section (existing) -->
-  <div id="uploadResults" style="display: none;">
-    
-    <div class="card-section">
-      <h3>📈 Grafik Tren Data Harga Aktual</h3>
-      <div class="chart-container">
-        <canvas id="uploadTrendChart"></canvas>
-      </div>
-    </div>
+  <!-- Results Section (existing) -->
+<div id="uploadResults" style="display: none;">
 
-    <div class="card-section">
-      <h3>📊 Statistik Data</h3>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-value" id="uploadDataPoints">-</div>
-          <div class="stat-label">Total Data Points</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="uploadAvgPrice">-</div>
-          <div class="stat-label">Harga Rata-rata</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="uploadMinPrice">-</div>
-          <div class="stat-label">Harga Terendah</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="uploadMaxPrice">-</div>
-          <div class="stat-label">Harga Tertinggi</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card-section">
-      <h3>🔮 Prediksi Harga Mendatang</h3>
-      <div class="predictions-grid">
-        <div class="prediction-card pred-1day">
-          <div class="pred-label">Prediksi 1 Hari</div>
-          <div class="pred-value" id="pred1Day">-</div>
-          <div class="pred-date" id="pred1DayDate">—</div>
-        </div>
-        <div class="prediction-card pred-7day">
-          <div class="pred-label">Prediksi 7 Hari</div>
-          <div class="pred-value" id="pred7Day">-</div>
-          <div class="pred-date" id="pred7DayDate">—</div>
-        </div>
-        <div class="prediction-card pred-10day">
-          <div class="pred-label">Prediksi 30 Hari</div>
-          <div class="pred-value" id="pred30Day">-</div>
-          <div class="pred-date" id="pred30DayDate">—</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card-section">
-      <h3>📉 Grafik Prediksi vs Aktual</h3>
-      <div class="chart-container">
-        <canvas id="uploadPredChart"></canvas>
-      </div>
-    </div>
-
+  <!-- optional placeholder / message area (script references #uploadPlaceholder) -->
+  <div id="uploadPlaceholder" style="display:none; margin-bottom:0.75rem; color:#6b7280;">
+    <small>Menunggu hasil...</small>
   </div>
+
+  <!-- FULL-MODE summary (hidden by default, shown when server returns mode:'full') -->
+  <div id="uploadFullSummary" style="display:none; margin-bottom:1rem; border-left:4px solid #e6f4ea; padding:0.6rem 0.8rem; background:#fbfff9;">
+    <h3 style="margin:0 0 0.5rem 0">Hasil Pelatihan (Full mode)</h3>
+    <p style="margin:0 0 0.5rem 0;color:#374151">Ringkasan training per kota. Klik nama kota untuk melihat detail pada panel utama.</p>
+  </div>
+
+  <div class="card-section">
+    <h3>📈 Grafik Tren Data Harga Aktual</h3>
+    <div class="chart-container">
+      <canvas id="uploadTrendChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card-section">
+    <h3>📊 Statistik Data</h3>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="uploadDataPoints">-</div>
+        <div class="stat-label">Total Data Points</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="uploadAvgPrice">-</div>
+        <div class="stat-label">Harga Rata-rata</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="uploadMinPrice">-</div>
+        <div class="stat-label">Harga Terendah</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="uploadMaxPrice">-</div>
+        <div class="stat-label">Harga Tertinggi</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-section">
+    <h3>🔮 Prediksi Harga Mendatang</h3>
+    <div class="predictions-grid">
+      <div class="prediction-card pred-1day">
+        <div class="pred-label">Prediksi 1 Hari</div>
+        <div class="pred-value" id="pred1Day">-</div>
+        <div class="pred-date" id="pred1DayDate">—</div>
+      </div>
+      <div class="prediction-card pred-7day">
+        <div class="pred-label">Prediksi 7 Hari</div>
+        <div class="pred-value" id="pred7Day">-</div>
+        <div class="pred-date" id="pred7DayDate">—</div>
+      </div>
+      <div class="prediction-card pred-10day">
+        <div class="pred-label">Prediksi 10 Hari</div>
+        <div class="pred-value" id="pred30Day">-</div>
+        <div class="pred-date" id="pred30DayDate">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-section">
+    <h3>📉 Grafik Prediksi</h3>
+    <div class="chart-container">
+      <canvas id="uploadPredChart"></canvas>
+    </div>
+  </div>
+
 </div>
 
-      <!-- ====== EVALUASI ====== -->
-     <!-- ====== EVALUASI ====== -->
-   
+</div>
+
+<div class="content-section" id="tentang">
+  <h2 class="section-title">ℹ️ Tentang Sistem</h2>
+
+  <!-- Hero Section -->
+  <div class="about-hero">
+    <div class="about-icon">🛢️</div>
+    <h1>Sistem Prediksi Harga Minyak Goreng Indonesia</h1>
+    <p>Platform prediksi berbasis machine learning untuk membantu analisis dan forecasting harga minyak goreng di seluruh Indonesia</p>
+  </div>
+
+  <!-- Metode Section -->
+  <section class="about-card">
+    <div class="card-header">
+      <span class="card-icon">🧠</span>
+      <h3>Metode Gradient Boosting</h3>
     </div>
+    <div class="card-body">
+      <p>Sistem ini menggunakan algoritma <strong>Gradient Boosting</strong>, sebuah teknik machine learning yang membangun model prediksi secara bertahap dengan menggabungkan beberapa model lemah (weak learners) menjadi model yang kuat.</p>
+      
+      <div class="method-features">
+        <div class="feature-item">
+          <span class="feature-icon">📊</span>
+          <div>
+            <strong>Akurasi Tinggi</strong>
+            <p>Menghasilkan prediksi dengan tingkat error yang rendah</p>
+          </div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">⚡</span>
+          <div>
+            <strong>Efisien</strong>
+            <p>Proses training dan prediksi yang cepat</p>
+          </div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">🎯</span>
+          <div>
+            <strong>Robust</strong>
+            <p>Mampu menangani data dengan pola kompleks</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-note">
+        <strong>📌 Catatan:</strong> Model dilatih menggunakan data historis PIHPS (Pusat Informasi Harga Pangan Strategis) untuk menghasilkan prediksi yang akurat berdasarkan tren dan pola harga sebelumnya.
+      </div>
+    </div>
+  </section>
+
+  <!-- Panduan Penggunaan -->
+  <section class="about-card">
+    <div class="card-header">
+      <span class="card-icon">📖</span>
+      <h3>Panduan Penggunaan Aplikasi</h3>
+    </div>
+    <div class="card-body">
+      
+      <!-- Modul Beranda -->
+      <div class="module-guide">
+        <div class="module-header">
+          <span class="module-icon">🏠</span>
+          <h4>Modul Beranda</h4>
+        </div>
+        <div class="module-steps">
+          <div class="step">
+            <span class="step-number">1</span>
+            <div class="step-content">
+              <strong>Pilih Kabupaten/Kota</strong>
+              <p>Pilih kabupaten atau kota yang ingin Anda lihat prediksinya dari dropdown yang tersedia</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">2</span>
+            <div class="step-content">
+              <strong>Lihat Hasil Prediksi</strong>
+              <p>Sistem akan menampilkan prediksi harga untuk <strong>1 hari, 7 hari, dan 30 hari</strong> ke depan secara otomatis</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modul Prediksi -->
+      <div class="module-guide">
+        <div class="module-header">
+          <span class="module-icon">🔮</span>
+          <h4>Modul Prediksi</h4>
+        </div>
+        <div class="module-steps">
+          <div class="step">
+            <span class="step-number">1</span>
+            <div class="step-content">
+              <strong>Pilih Kabupaten/Kota</strong>
+              <p>Pilih kabupaten atau kota yang ingin diprediksi dari dropdown</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">2</span>
+            <div class="step-content">
+              <strong>Pilih Mode Prediksi</strong>
+              <p>Terdapat 2 mode yang tersedia:</p>
+              <ul>
+                <li><strong>Test:</strong> Prediksi dengan batas nilai uji 1 tahun (2 Juli 2024 – 1 Juli 2025)</li>
+                <li><strong>Real:</strong> Prediksi dari data terakhir yang tersedia</li>
+              </ul>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">3</span>
+            <div class="step-content">
+              <strong>Pilih Rentang Tanggal</strong>
+              <p>Tentukan tanggal mulai dan tanggal akhir periode prediksi yang Anda inginkan</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">4</span>
+            <div class="step-content">
+              <strong>Lihat Hasil</strong>
+              <p>Grafik perbandingan harga sebenarnya dengan harga terprediksi serta hasil evaluasi model akan ditampilkan</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modul Tinjauan Tren -->
+      <div class="module-guide">
+        <div class="module-header">
+          <span class="module-icon">📈</span>
+          <h4>Modul Tinjauan Tren</h4>
+        </div>
+        <div class="module-steps">
+          <div class="step">
+            <span class="step-number">1</span>
+            <div class="step-content">
+              <strong>Pilih Kota 1 & Kota 2</strong>
+              <p>Pilih dua kabupaten/kota yang ingin dibandingkan trennya</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">2</span>
+            <div class="step-content">
+              <strong>Pilih Periode</strong>
+              <p>Tentukan tahun, bulan (opsional), dan minggu (opsional) untuk analisis tren</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">3</span>
+            <div class="step-content">
+              <strong>Klik Analisis Data</strong>
+              <p>Tekan tombol "Analisis Data" untuk memproses data</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">4</span>
+            <div class="step-content">
+              <strong>Lihat Grafik Perbandingan</strong>
+              <p>Grafik perbandingan tren harga kedua kota akan ditampilkan beserta statistik lengkapnya</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modul Upload -->
+      <div class="module-guide">
+        <div class="module-header">
+          <span class="module-icon">🧪</span>
+          <h4>Modul Upload</h4>
+        </div>
+        <div class="module-steps">
+          <div class="step">
+            <span class="step-number">1</span>
+            <div class="step-content">
+              <strong>Download Template</strong>
+              <p>Download template CSV atau Excel yang telah disediakan</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">2</span>
+            <div class="step-content">
+              <strong>Isi Data</strong>
+              <p>Isi data sesuai format template (hanya untuk 1 kota per file)</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">3</span>
+            <div class="step-content">
+              <strong>Upload File</strong>
+              <p>Klik area upload atau drag & drop file Anda</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">4</span>
+            <div class="step-content">
+              <strong>Simpan & Analisis</strong>
+              <p>Klik tombol "Simpan & Analisis" untuk memproses data</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">5</span>
+            <div class="step-content">
+              <strong>Lihat Hasil</strong>
+              <p>Grafik tren aktual dan prediksi akan ditampilkan beserta statistiknya</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Fitur Utama -->
+  <section class="about-card">
+    <div class="card-header">
+      <span class="card-icon">✨</span>
+      <h3>Fitur Utama</h3>
+    </div>
+    <div class="card-body">
+      <div class="features-grid">
+        <div class="feature-box">
+          <span class="box-icon">🗺️</span>
+          <h5>Peta Interaktif</h5>
+          <p>Visualisasi harga rata-rata per provinsi dengan kategori warna</p>
+        </div>
+        <div class="feature-box">
+          <span class="box-icon">📊</span>
+          <h5>Analisis Tren</h5>
+          <p>Perbandingan tren harga antar kota dengan grafik real-time</p>
+        </div>
+        <div class="feature-box">
+          <span class="box-icon">🎯</span>
+          <h5>Evaluasi Model</h5>
+          <p>Metrik performa model (MSE, RMSE, MAPE, R²)</p>
+        </div>
+        <div class="feature-box">
+          <span class="box-icon">📁</span>
+          <h5>Upload Data</h5>
+          <p>Upload data custom untuk prediksi personal</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
   </main>
 
   <!-- backdrop (DIHAPUS karena tidak ada sidebar/drawer) -->
