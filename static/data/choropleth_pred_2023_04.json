@@ -1,0 +1,140 @@
+{
+  "year": 2023,
+  "month": 4,
+  "generated_at": "2025-10-17T16:25:00.227823Z",
+  "model_version": "da39a3ee5e",
+  "data": [
+    {
+      "province": "ACEH",
+      "value": 19672.5
+    },
+    {
+      "province": "BALI",
+      "value": 20916.666666666668
+    },
+    {
+      "province": "BANGKA BELITUNG",
+      "value": 16507.5
+    },
+    {
+      "province": "BANTEN",
+      "value": 18333.333333333332
+    },
+    {
+      "province": "BENGKULU",
+      "value": 18845.0
+    },
+    {
+      "province": "DAERAH ISTIMEWA YOGYAKARTA",
+      "value": 18523.333333333332
+    },
+    {
+      "province": "DI. ACEH",
+      "value": 18870.0
+    },
+    {
+      "province": "DKI JAKARTA",
+      "value": 19200.0
+    },
+    {
+      "province": "GORONTALO",
+      "value": 23710.0
+    },
+    {
+      "province": "JAMBI",
+      "value": 17675.0
+    },
+    {
+      "province": "JAWA BARAT",
+      "value": 18271.666666666668
+    },
+    {
+      "province": "JAWA TENGAH",
+      "value": 17858.636363636364
+    },
+    {
+      "province": "JAWA TIMUR",
+      "value": 18099.0
+    },
+    {
+      "province": "KALIMANTAN BARAT",
+      "value": 19487.777777777777
+    },
+    {
+      "province": "KALIMANTAN SELATAN",
+      "value": 19691.11111111111
+    },
+    {
+      "province": "KALIMANTAN TENGAH",
+      "value": 20950.0
+    },
+    {
+      "province": "KALIMANTAN TIMUR",
+      "value": 19271.11111111111
+    },
+    {
+      "province": "KALIMANTAN UTARA",
+      "value": 20116.666666666668
+    },
+    {
+      "province": "KEPULAUAN RIAU",
+      "value": 17103.0
+    },
+    {
+      "province": "LAMPUNG",
+      "value": 15027.552
+    },
+    {
+      "province": "MALUKU",
+      "value": 22000.0
+    },
+    {
+      "province": "MALUKU UTARA",
+      "value": 21901.666666666668
+    },
+    {
+      "province": "NUSA TENGGARA TIMUR",
+      "value": 20145.95238095238
+    },
+    {
+      "province": "PAPUA",
+      "value": 22922.0
+    },
+    {
+      "province": "PAPUA BARAT",
+      "value": 25025.0
+    },
+    {
+      "province": "SULAWESI BARAT",
+      "value": 20080.0
+    },
+    {
+      "province": "SULAWESI SELATAN",
+      "value": 18462.666666666668
+    },
+    {
+      "province": "SULAWESI TENGAH",
+      "value": 18635.0
+    },
+    {
+      "province": "SULAWESI TENGGARA",
+      "value": 21669.166666666668
+    },
+    {
+      "province": "SULAWESI UTARA",
+      "value": 18157.5
+    },
+    {
+      "province": "SUMATERA BARAT",
+      "value": 18103.333333333332
+    },
+    {
+      "province": "SUMATERA SELATAN",
+      "value": 21350.0
+    },
+    {
+      "province": "SUMATERA UTARA",
+      "value": 19055.0
+    }
+  ]
+}
