@@ -277,13 +277,41 @@ function ensureMap(){
   return map; 
 }
 
+function showMapValidation(msg){
+  const el = document.getElementById('mapValidation');
+  if(!el) return;
+  el.innerHTML = `<small><strong style="color:#b45309">⚠️ ${msg}</strong></small>`;
+  el.style.display = 'block';
+}
+function hideMapValidation(){
+  const el = document.getElementById('mapValidation');
+  if(!el) return;
+  el.style.display = 'none';
+}
+
+
+// === modifikasi pada showMapBeranda ===
 async function showMapBeranda(){
-  const island=document.getElementById('pulau').value || 'Semua Pulau';
-  const tahun=document.getElementById('b_tahun').value;
+  const islandInput = document.getElementById('pulau');
+  const island = islandInput ? islandInput.value.trim() : '';
+  const tahun = document.getElementById('b_tahun').value;
   const bulan=document.getElementById('b_bulan').value;
   const minggu=document.getElementById('b_minggu').value;
   const loading=document.getElementById('b_loading');
-  if(!tahun){ alert('Pilih tahun dulu.'); return; }
+
+  // validasi: Pulau dan Tahun wajib
+  if(!island || island === '' ){
+    showMapValidation('Pilih Pulau terlebih dahulu.');
+    return;
+  }
+  if(!tahun){
+    showMapValidation('Pilih Tahun terlebih dahulu.');
+    return;
+  }
+
+  // jika valid, sembunyikan pesan validasi (jika ada)
+  hideMapValidation();
+
   loading.style.display='inline-block';
   try{
     const url=`/api/choropleth?island=${encodeURIComponent(island)}&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}`;
@@ -315,100 +343,6 @@ async function showMapBeranda(){
   finally{ loading.style.display='none'; }
 }
 window.showMapBeranda = showMapBeranda;
-
-// map-validation-inline.js
-(function(){
-  // jangan install dua kali
-  if(window._mapValidationInlineInstalled) return;
-  window._mapValidationInlineInstalled = true;
-
-  // ambil referensi elemen pesan (pastikan elemen sudah ada di DOM)
-  function getMsgEl(){
-    return document.getElementById('map-validation-inline');
-  }
-
-  function showInlineMessage(msg){
-    const el = getMsgEl();
-    if(!el) { alert(msg); return; } // fallback safety
-    el.textContent = msg;
-    el.classList.add('show');
-    // optional smaller style if message short
-    if(msg.length < 60) el.classList.add('small'); else el.classList.remove('small');
-  }
-  function hideInlineMessage(){
-    const el = getMsgEl();
-    if(!el) return;
-    el.classList.remove('show','small');
-    el.style.display = ''; // keep css control
-    // clear after short delay for better UX
-    setTimeout(()=>{ el.textContent=''; }, 400);
-  }
-
-  // simpan original jika ada
-  const originalShow = window.showMapBeranda && typeof window.showMapBeranda === 'function' ? window.showMapBeranda : null;
-
-  // override global
-  window.showMapBeranda = async function(){
-    // ambil values dari DOM (nama id sesuai HTML-mu)
-    const pulauEl = document.getElementById('pulau');
-    const tahunEl = document.getElementById('b_tahun');
-    const bulanEl = document.getElementById('b_bulan');
-    const mingguEl = document.getElementById('b_minggu');
-
-    const pulau = pulauEl ? (pulauEl.value || '').toString().trim() : '';
-    const tahun = tahunEl ? (tahunEl.value || '').toString().trim() : '';
-    const bulan = bulanEl ? (bulanEl.value || '').toString().trim() : '';
-    const minggu = mingguEl ? (mingguEl.value || '').toString().trim() : '';
-
-    // validasi: Pulau & Tahun wajib
-    const missing = [];
-    if(!pulau) missing.push('Pulau');
-    if(!tahun) missing.push('Tahun');
-
-    if(missing.length){
-      // tampilkan pesan inline, fokus ke field pertama kosong
-      showInlineMessage('Mohon lengkapi: ' + missing.join(' dan ') + ' terlebih dahulu.');
-      // fokus ke field pertama kosong (pulau -> tahun)
-      if(!pulau && pulauEl) pulauEl.focus();
-      else if(!tahun && tahunEl) tahunEl.focus();
-      return; // jangan lanjutkan memanggil original
-    }
-
-    // jika valid, sembunyikan pesan dan panggil fungsi asli
-    hideInlineMessage();
-
-    if(originalShow){
-      try{
-        // forwarded arguments & preserved context
-        return await originalShow.apply(this, arguments);
-      }catch(err){
-        // jika fungsi asli throw, log & beri fallback alert
-        console.error('Error in original showMapBeranda:', err);
-        const el = getMsgEl();
-        if(el) showInlineMessage('Terjadi kesalahan saat menampilkan peta. Lihat console.');
-        else alert('Terjadi kesalahan saat menampilkan peta.');
-        throw err;
-      }
-    }else{
-      // fallback safety (tidak seharusnya terjadi)
-      console.warn('Original showMapBeranda not found; validation passed but no map function to call.');
-    }
-  };
-
-  // non-invasive: enable minggu select when bulan change (only attach if elements exist)
-  try{
-    const bBulan = document.getElementById('b_bulan');
-    const bMinggu = document.getElementById('b_minggu');
-    if(bBulan && bMinggu && !bBulan._mapValidationInlineAttached){
-      bBulan._mapValidationInlineAttached = true;
-      bBulan.addEventListener('change', function(){
-        if(this.value) { bMinggu.disabled = false; }
-        else { bMinggu.disabled = true; bMinggu.value = ''; }
-      });
-    }
-  }catch(e){ /* ignore */ }
-
-})();
 
 
 

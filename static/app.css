@@ -1289,23 +1289,12 @@ html { scroll-padding-top: 84px; } /* sesuaikan jika perlu */
     font-size: 1.75rem;
   }
 }
-/* map-validation.css — styling pesan validasi inline (scoped, aman) */
-#map-validation-inline {
-  margin-top: 0.5rem;
-  font-size: 0.95rem;
-  color: #b91c1c;           /* merah (error) */
-  background: #fff5f5;      /* very light red bg */
-  border-left: 3px solid #fca5a5;
-  padding: 0.45rem 0.6rem;
-  border-radius: 6px;
-  display: none;            /* default hidden */
-  max-width: 360px;
-}
-#map-validation-inline.show {
-  display: block;
-}
-#map-validation-inline.small {
-  font-size: 0.9rem;
-  padding: 0.35rem 0.5rem;
-  max-width: 320px;
+
+.field-validation { 
+  background: #fffbeb; 
+  border-left: 4px solid #f59e0b; 
+  padding: .45rem .6rem; 
+  border-radius: .35rem;
+  color: #92400e;
+  font-size: .95rem;
 }

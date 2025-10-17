@@ -167,33 +167,36 @@
               <select id="b_minggu" disabled>
                 <option value="">— Semua Minggu —</option>
                 <option value="1">1</option><option value="2">2</option>
-                <option value="3">3</option><option value="4">4</option>
+                <option value="3">3</option><option value="4">4</option><option value="5">5</option>
               </select>
             </div>
             <div class="input-group">
               <button class="btn" onclick="showMapBeranda()">Tampilkan
                 <span class="loading" id="b_loading" style="display:none;"></span>
               </button>
-              <div id="map-validation-inline" aria-live="polite" style="display:none;"></div>
-</div>
             </div>
           </div>
         </div>
+          <!-- Validation message untuk map -->
+        <div id="mapValidation" class="field-validation" role="alert" aria-live="polite" style="display:none; margin-top:0.5rem;">
+          <small><strong style="color:#b45309">⚠️ Mohon isi Pulau dan Tahun terlebih dahulu.</strong></small>
+        </div>
+
 
         <div class="info-box">
           <h3>Tentang Sistem</h3>
           <p>Sistem ini menggunakan <strong>Gradient Boosting</strong> untuk memprediksi harga minyak goreng berdasarkan data historis PIHPS. Di bawah ini adalah <strong>peta harga rata-rata per provinsi</strong> dengan kategori warna:
-            <span style="color:#2ecc71;font-weight:600;">Hijau</span> (Q1),
-            <span style="color:#f1c40f;font-weight:600;">Kuning</span> (Q2),
-            <span style="color:#e74c3c;font-weight:600;">Merah</span> (Q3).
+            <span style="color:#2ecc71;font-weight:600;">Hijau</span> (rendah),
+            <span style="color:#f1c40f;font-weight:600;">Kuning</span> (sedang),
+            <span style="color:#e74c3c;font-weight:600;">Merah</span> (tinggi).
           </p>
         </div>
 
         <div id="map"></div>
         <div class="legend">
-          <span><i style="background:#2ecc71"></i> Q1</span>
-          <span><i style="background:#f1c40f"></i> Q2</span>
-          <span><i style="background:#e74c3c"></i> Q3</span>
+          <span><i style="background:#2ecc71"></i> Rendah</span>
+          <span><i style="background:#f1c40f"></i> Sedang</span>
+          <span><i style="background:#e74c3c"></i> Tinggi</span>
         </div>
 
         <div class="stats-grid" style="margin-top:1rem">
@@ -201,7 +204,8 @@
           <div class="stat-card"><div class="stat-value" id="statScope">-</div><div class="stat-label">Periode</div></div>
           <div class="stat-card"><div class="stat-value" id="statLast">-</div><div class="stat-label">Last Actual</div></div>
         </div>
-       
+        <!-- ====== TOP 5 KAB/KOTA (BERANDA) ====== -->
+        
         <section class="card-section" id="regional-correlation">
   <h2 class="section-title">Eksplor Kab/Kota per Pulau atau Provinsi</h2>
 
