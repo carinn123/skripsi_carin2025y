@@ -290,17 +290,20 @@ function hideMapValidation(){
 }
 
 
-// === modifikasi pada showMapBeranda ===
-async function showMapBeranda(){
+// === showMapBeranda (update versi final) ===
+async function showMapBeranda(event){
   const islandInput = document.getElementById('pulau');
   const island = islandInput ? islandInput.value.trim() : '';
   const tahun = document.getElementById('b_tahun').value;
-  const bulan=document.getElementById('b_bulan').value;
-  const minggu=document.getElementById('b_minggu').value;
-  const loading=document.getElementById('b_loading');
+  const bulan = document.getElementById('b_bulan').value;
+  const minggu = document.getElementById('b_minggu').value;
+  const loading = document.getElementById('b_loading');
 
-  // validasi: Pulau dan Tahun wajib
-  if(!island || island === '' ){
+  // NEW: mode (actual | predicted)
+  const mode = (document.getElementById('b_mode') && document.getElementById('b_mode').value) || 'actual';
+
+  // validasi dasar
+  if(!island){
     showMapValidation('Pilih Pulau terlebih dahulu.');
     return;
   }
@@ -308,41 +311,258 @@ async function showMapBeranda(){
     showMapValidation('Pilih Tahun terlebih dahulu.');
     return;
   }
-
-  // jika valid, sembunyikan pesan validasi (jika ada)
+  if(mode === 'predicted' && !bulan){
+    showMapValidation('Untuk Predicted, silakan pilih Bulan terlebih dahulu.');
+    return;
+  }
   hideMapValidation();
 
   loading.style.display='inline-block';
+
   try{
-    const url=`/api/choropleth?island=${encodeURIComponent(island)}&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}`;
-    const res=await fetch(url); const js=await res.json(); if(!res.ok) throw new Error(js.error||'Server error');
-    const m=ensureMap(); const gj=await getProvGeoJSON();
-    const vmap=Object.fromEntries(js.data.map(d=>[normProv(d.province),{val:d.value,cat:d.category,label:d.province}]));
+    const url = `/api/choropleth?island=${encodeURIComponent(island)}&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}&mode=${encodeURIComponent(mode)}`;
+    const res = await fetch(url, {cache:'no-store'});
+    const js = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(js.error || ('HTTP '+res.status));
+
+    const m = ensureMap();
+    const gj = await getProvGeoJSON();
+
+    // buat mapping provinsi -> nilai
+    const vmap = Object.fromEntries((js.data||[]).map(d=>[
+      normProv(d.province),
+      { val:d.value, cat:d.category, label:d.province }
+    ]));
+
     if(geoLayer) geoLayer.remove();
-    geoLayer=L.geoJSON(gj,{
-      style: f=>{
-        const raw=f.properties.Propinsi||f.properties.PROVINSI||f.properties.provinsi||f.properties.name||f.properties.NAMOBJ||"";
-        const rec=vmap[normProv(raw)];
-        const fill=rec? (rec.cat==='low'?'#2ecc71':rec.cat==='mid'?'#f1c40f':'#e74c3c') : '#bdc3c7';
-        return {color:'#fff',weight:1,fillColor:fill,fillOpacity:.85};
+    geoLayer = L.geoJSON(gj, {
+      style: f => {
+        const raw = f.properties.Propinsi || f.properties.PROVINSI || f.properties.provinsi || f.properties.name || f.properties.NAMOBJ || "";
+        const rec = vmap[normProv(raw)];
+        const fill = rec
+          ? (rec.cat==='low' ? '#2ecc71' : rec.cat==='mid' ? '#f1c40f' : '#e74c3c')
+          : '#bdc3c7';
+        return { color:'#fff', weight:1, fillColor:fill, fillOpacity:.85 };
       },
-      onEachFeature:(feature,layer)=>{
-        const raw=feature.properties.Propinsi||feature.properties.PROVINSI||feature.properties.provinsi||feature.properties.name||feature.properties.NAMOBJ||"—";
-        const rec=vmap[normProv(raw)]; const val=rec? Math.round(rec.val):null; const cat=rec? rec.cat:'no-data';
-        layer.bindPopup(`<b>${raw}</b><br/>${val?('Rp '+rupiah(val)):'—'}<br/>Kategori: ${cat}`);
+      onEachFeature: (feature, layer) => {
+        const raw = feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "—";
+        const rec = vmap[normProv(raw)];
+        const val = rec ? Math.round(rec.val) : null;
+        const cat = rec ? rec.cat : 'no-data';
+
+        let meta = '';
+        if(js.mode === 'predicted' || js.generated_at || js.model_version){
+          const gen = js.generated_at ? `Generated: ${js.generated_at}` : '';
+          const mv = js.model_version ? `Model: ${js.model_version}` : '';
+          meta = `<br/><small style="color:#6b7280">${[gen,mv].filter(Boolean).join(' • ')}</small>`;
+        }
+
+        layer.bindPopup(`<b>${raw}</b><br/>${val ? ('Rp '+rupiah(val)) : '—'}<br/>Kategori: ${cat}${meta}`);
+        if (!layer._provClickTimer) layer._provClickTimer = null;
+          layer.on('click', function(e){
+            const provName = (feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "").trim();
+            if(!provName) return;
+            if(layer._provClickTimer) clearTimeout(layer._provClickTimer);
+            layer._provClickTimer = setTimeout(()=>{
+              // non-blocking call to load table for this province
+              if(typeof loadRegionSummaryForProvince === 'function'){
+                loadRegionSummaryForProvince(provName).catch(err => console.error('loadRegionSummaryForProvince', err));
+              } else {
+                console.warn('loadRegionSummaryForProvince not defined');
+              }
+              layer._provClickTimer = null;
+            }, 300);
+          });
+        // use a distinct variable name and a tiny debounce to avoid spam
+        let _provClickTimer = null;
+        layer.on('click', function(e){
+          const provName = (feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "").trim();
+          if(!provName) return;
+          // debounce 300ms to avoid double-click storms
+          if(_provClickTimer) clearTimeout(_provClickTimer);
+          _provClickTimer = setTimeout(()=>{
+            // call loader for province (implementasi di bawah)
+            loadRegionSummaryForProvince(provName);
+            _provClickTimer = null;
+          }, 300);
+});
       }
     }).addTo(m);
-    try{ m.fitBounds(geoLayer.getBounds(), {padding:[20,20]}); }catch(e){}
-    document.getElementById('statPulau').textContent=island||'Semua Pulau';
-    let scope=`Tahun ${tahun}`; 
-    if(bulan) scope=`Bulan ${monthsID[+bulan]} ${tahun}`; 
-    if(bulan&&minggu) scope=`Minggu ke-${minggu}, ${monthsID[+bulan]} ${tahun}`;
-    document.getElementById('statScope').textContent=scope;
-    document.getElementById('statLast').textContent=js.last_actual||'-';
-  }catch(e){ console.error(e); alert('Gagal menampilkan peta: '+e.message); }
-  finally{ loading.style.display='none'; }
+
+    try { m.fitBounds(geoLayer.getBounds(), {padding:[20,20]}); } catch(e){}
+
+    // === 🔥 trigger tabel eksplor kab/kota ===
+    loadRegionSummaryFromMap(island).catch(err => {
+      console.error('loadRegionSummaryFromMap failed', err);
+    });
+
+    // === update informasi statistik ===
+    document.getElementById('statPulau').textContent = island || 'Semua Pulau';
+
+    let scope = `Tahun ${tahun}`;
+    if(bulan) scope = `Bulan ${monthsID[+bulan]} ${tahun}`;
+    if(bulan && minggu) scope = `Minggu ke-${minggu}, ${monthsID[+bulan]} ${tahun}`;
+    document.getElementById('statScope').textContent = scope;
+
+    if(js.generated_at){
+      try{
+        const d = new Date(js.generated_at);
+        const opt = { year:'numeric', month:'short', day:'numeric' };
+        document.getElementById('statLast').textContent = 
+          `Predicted: ${d.toLocaleDateString('id-ID', opt)}`;
+      }catch(e){
+        document.getElementById('statLast').textContent = `Predicted: ${js.generated_at.split('T')[0]}`;
+      }
+    } else {
+      document.getElementById('statLast').textContent = js.last_actual || '-';
+    }
+
+  }catch(e){
+    console.error(e);
+    alert('Gagal menampilkan peta: '+(e.message||e));
+  }finally{
+    loading.style.display='none';
+  }
 }
+
 window.showMapBeranda = showMapBeranda;
+
+
+// >>> ADDED >>> START helper functions for region table (paste after showMapBeranda)
+
+// render rows into #rc_table tbody
+function fillRegionTable(rows){
+  const tbody = document.querySelector('#rc_table tbody');
+  if(!tbody){
+    console.warn('fillRegionTable: tbody not found');
+    return;
+  }
+  if(!rows || rows.length === 0){
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
+    return;
+  }
+
+  let html = '';
+  rows.forEach(r => {
+    const highPeriod = (r.avg_month_high_month && r.avg_month_high_year) ? `${r.avg_month_high_month}/${r.avg_month_high_year}` :
+                       (r.avg_month_high_month ? `${r.avg_month_high_month}` : '—');
+    const lowPeriod  = (r.avg_month_low_month && r.avg_month_low_year) ? `${r.avg_month_low_month}/${r.avg_month_low_year}` :
+                       (r.avg_month_low_month ? `${r.avg_month_low_month}` : '—');
+
+    html += `<tr>
+      <td>${r.no ?? ''}</td>
+      <td>${r.city ?? ''}</td>
+      <td>${r.province ?? ''}</td>
+      <td>${r.island ?? ''}</td>
+      <td class="num">${(r.min_value!=null) ? rupiah(Math.round(r.min_value)) : '—'}</td>
+      <td class="num">${r.min_date ?? '—'}</td>
+      <td class="num">${(r.max_value!=null) ? rupiah(Math.round(r.max_value)) : '—'}</td>
+      <td class="num">${r.max_date ?? '—'}</td>
+      <td class="num">${(r.avg_month_high!=null) ? rupiah(Math.round(r.avg_month_high)) : '—'}</td>
+      <td class="num">${highPeriod}</td>
+      <td class="num">${(r.avg_month_low!=null) ? rupiah(Math.round(r.avg_month_low)) : '—'}</td>
+      <td class="num">${lowPeriod}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+}
+
+// load by island (called automatically after showMapBeranda)
+const __RC_CACHE = {}; // simple in-memory cache
+const RC_CACHE_TTL = 1000 * 60 * 5; // 5 minutes
+
+async function loadRegionSummaryFromMap(island){
+  const tbody = document.querySelector('#rc_table tbody');
+  const loader = document.getElementById('rc_loading');
+  if(loader) loader.style.display = 'inline-block';
+
+  try{
+    if(!island){
+      fillRegionTable([]);
+      return;
+    }
+
+    const key = `island:${island}`;
+    const now = Date.now();
+    if(__RC_CACHE[key] && (now - __RC_CACHE[key].ts) < RC_CACHE_TTL){
+      fillRegionTable(__RC_CACHE[key].rows);
+      return;
+    }
+
+    const url = `/api/region_summary?mode=island&value=${encodeURIComponent(island)}`;
+    const res = await fetch(url, {cache:'no-store'});
+    const js = await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      console.error('region_summary error', js);
+      fillRegionTable([]);
+      return;
+    }
+
+    const rows = js.rows || [];
+    fillRegionTable(rows);
+    __RC_CACHE[key] = { ts: now, rows };
+  }catch(err){
+    console.error('loadRegionSummaryFromMap error', err);
+    fillRegionTable([]);
+  }finally{
+    if(loader) loader.style.display = 'none';
+  }
+}
+
+// load by province (called when user clicks a province on the map)
+async function loadRegionSummaryForProvince(prov){
+  const tbody = document.querySelector('#rc_table tbody');
+  const loader = document.getElementById('rc_loading');
+  if(loader) loader.style.display = 'inline-block';
+
+  try{
+    if(!prov){
+      fillRegionTable([]);
+      return;
+    }
+    const key = `province:${prov}`;
+    const now = Date.now();
+    if(__RC_CACHE[key] && (now - __RC_CACHE[key].ts) < RC_CACHE_TTL){
+      fillRegionTable(__RC_CACHE[key].rows);
+      return;
+    }
+
+    const url = `/api/region_summary?mode=province&value=${encodeURIComponent(prov)}`;
+    const res = await fetch(url, {cache:'no-store'});
+    const js = await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      console.error('region_summary (province) error', js);
+      fillRegionTable([]);
+      return;
+    }
+
+    const rows = js.rows || [];
+    fillRegionTable(rows);
+    __RC_CACHE[key] = { ts: now, rows };
+  }catch(err){
+    console.error('loadRegionSummaryForProvince error', err);
+    fillRegionTable([]);
+  }finally{
+    if(loader) loader.style.display = 'none';
+  }
+}
+
+// >>> ADDED >>> END helper functions
+
+// tambahan: bila user ganti mode, update UI (hanya untuk UX)
+const bmode = document.getElementById('b_mode');
+if(bmode){
+  bmode.addEventListener('change', function(){
+    // jika predicted -> show small note (and encourage select month)
+    const note = document.getElementById('pred_info');
+    if(note){
+      note.textContent = (this.value === 'predicted') ? 'Mode: Predicted (pilih Bulan untuk hasil precomputed)' : 'Mode: Actual';
+    }
+  });
+}
 
 
 
@@ -447,15 +667,85 @@ function renderTrendChartTo(canvasId, placeholderId, series, granularity, title)
                         : granularity==='monthly' ? 'Rata-rata per Minggu'
                         : 'Harian (minggu terpilih)';
 
+  // label untuk sumbu X: sesuaikan dengan granularity
+  const xAxisLabel = granularity==='yearly' ? 'Bulan' :
+                     granularity==='monthly' ? 'Minggu' : 'Tanggal';
+
   const data = {
     labels,
-    datasets: [{ label: datasetLabel, data: values, tension:.25, fill:true, pointRadius:2, borderWidth:2 }]
+    datasets: [{ 
+      label: datasetLabel, 
+      data: values, 
+      tension: .25, 
+      fill: true, 
+      pointRadius: 2, 
+      borderWidth: 2,
+      borderColor: '#4A90E2',
+      backgroundColor: 'rgba(74,144,226,0.08)'
+    }]
   };
+
   const options = {
-    responsive:true, maintainAspectRatio:false,
-    plugins:{ title:{ display:true, text: title || 'Tren Harga' },
-              tooltip:{ callbacks:{ label:(c)=>` ${datasetLabel}: Rp ${rupiah(c.parsed.y)}` } } },
-    scales:{ y:{ ticks:{ callback:v=>'Rp '+rupiah(v) }}, x:{ ticks:{ autoSkip:true, maxRotation:0 }}}
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      title: { 
+        display: true, 
+        text: title || 'Tren Harga',
+        color: '#111',
+        font: { size: 14, weight: '600' }
+      },
+      tooltip: {
+        callbacks: {
+          label: (c) => ` ${datasetLabel}: Rp ${rupiah(c.parsed.y)}`
+        }
+      },
+      legend: {
+        labels: { color: '#333' }
+      }
+    },
+    scales: {
+      y: {
+        title: {
+          display: true,
+          text: 'Harga (Rp)',
+          color: '#111',
+          font: { size: 12, weight: '600' }
+        },
+        ticks: {
+          callback: v => 'Rp ' + rupiah(v),
+          color: '#444'
+        },
+        grid: {
+          color: '#eee'
+        }
+      },
+      x: {
+        title: {
+          display: true,
+          text: xAxisLabel,
+          color: '#111',
+          font: { size: 12, weight: '600' }
+        },
+        ticks: {
+          autoSkip: true,
+          maxRotation: 0,
+          color: '#444',
+          callback(value, index, ticks) {
+            const raw = this?.chart?.data?.labels?.[value] ?? (ticks?.[index]?.label ?? value);
+            if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+              const [y,m,d] = raw.split('-');
+              const mon = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][+m-1];
+              return `${d} ${mon}`;
+            }
+            return String(raw ?? '');
+          }
+        },
+        grid: {
+          color: '#f7f7f7'
+        }
+      }
+    }
   };
 
   if (canvasId==='trendChartA'){
@@ -490,20 +780,93 @@ function renderTrendChartCombined(labels, valuesA, valuesB, nameA, nameB){
     data: {
       labels,
       datasets: [
-        { label: nameA || 'Kota 1', data: valuesA, tension:.25, pointRadius:2, borderWidth:2 },
-        { label: nameB || 'Kota 2', data: valuesB, tension:.25, pointRadius:2, borderWidth:2 }
+        {
+          label: nameA || 'Kota 1',
+          data: valuesA,
+          tension: .25,
+          pointRadius: 2,
+          borderWidth: 2,
+          borderColor: '#4A90E2',
+          backgroundColor: 'rgba(74,144,226,0.06)',
+          spanGaps: true
+        },
+        {
+          label: nameB || 'Kota 2',
+          data: valuesB,
+          tension: .25,
+          pointRadius: 2,
+          borderWidth: 2,
+          borderColor: '#FF8A65',
+          backgroundColor: 'rgba(255,138,101,0.06)',
+          spanGaps: true
+        }
       ]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { title: { display: true, text: 'Tren Harga • Grafik Gabungan' } },
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: { 
+          display: true,
+          text: 'Tren Harga • Grafik Gabungan',
+          color: '#111',
+          font: { size: 14, weight: '600' }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const lab = ctx.dataset.label || '';
+              const val = ctx.parsed.y;
+              return ` ${lab}: Rp ${rupiah(val)}`;
+            }
+          }
+        },
+        legend: {
+          labels: { color: '#333' }
+        }
+      },
       scales: {
-        y: { ticks: { callback: v => 'Rp ' + rupiah(v) } },
-        x: { ticks: { autoSkip: true, maxRotation: 0 } }
+        y: {
+          title: {
+            display: true,
+            text: 'Harga (Rp)',
+            color: '#111',
+            font: { size: 12, weight: '600' }
+          },
+          ticks: {
+            callback: v => 'Rp ' + rupiah(v),
+            color: '#444'
+          },
+          grid: { color: '#eee' }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Tanggal',
+            color: '#111',
+            font: { size: 12, weight: '600' }
+          },
+          ticks: {
+            autoSkip: true,
+            maxRotation: 0,
+            color: '#444',
+            callback(value, index, ticks) {
+              const raw = this?.chart?.data?.labels?.[value] ?? (ticks?.[index]?.label ?? value);
+              if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+                const [y,m,d] = raw.split('-');
+                const mon = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][+m-1];
+                return `${d} ${mon}`;
+              }
+              return String(raw ?? '');
+            }
+          },
+          grid: { color: '#f7f7f7' }
+        }
       }
     }
   });
 }
+
 
 async function loadData(){
   const selA = document.getElementById('kabupaten');
@@ -769,32 +1132,51 @@ function renderPredChart(labels, actual, predicted, cityLabel) {
         {
           label: `Aktual • ${cityLabel}`,
           data: actual,
+          borderColor: '#4A90E2',     // 💙 warna garis aktual
+          backgroundColor: '#4A90E233',
           borderWidth: 2,
-          tension: .25,            // <-- smooth ringan (seperti Matplotlib)
-          stepped: false,          // <-- DULUNYA 'before'
+          tension: 0.25,
           pointRadius: 0,
-          spanGaps: true           // gap di awal (hasil rolling) jangan dihubungkan
+          spanGaps: true
         },
         {
           label: `Prediksi • ${cityLabel}`,
           data: predicted,
+          borderColor: '#FF6384',     // 💗 warna garis prediksi
+          borderDash: [6, 6],
+          backgroundColor: '#FF638433',
           borderWidth: 2,
-          tension: .25,
-          stepped: false,          // <-- DULUNYA 'before'
+          tension: 0.25,
           pointRadius: 0,
-          spanGaps: true,
-          borderDash: [6,6]        // opsional: biar keliatan dashed seperti plot
+          spanGaps: true
         }
       ]
     },
     options: {
       plugins: {
-        title: { display: true, text: 'Aktual vs Prediksi (Gradient Boosting)' },
-        forceXTicks: { count: 12 }
+        title: {
+          display: true,
+          text: 'Aktual vs Prediksi (Gradient Boosting)',
+          color: '#000',
+          font: { size: 14, weight: 'bold' }
+        },
+        legend: {
+          labels: {
+            color: '#333', // warna teks legend
+            font: { size: 12 }
+          }
+        }
       },
       scales: {
         x: {
+          title: {
+            display: true,
+            text: 'Tanggal',      // 🕓 label sumbu X
+            color: '#111',
+            font: { size: 13, weight: 'bold' }
+          },
           ticks: {
+            color: '#444',         // warna teks tanggal
             autoSkip: false,
             maxRotation: 0,
             callback(value, index, ticks) {
@@ -807,9 +1189,26 @@ function renderPredChart(labels, actual, predicted, cityLabel) {
               return String(raw ?? '');
             }
           },
-          grid: { drawTicks: true }
+          grid: {
+            drawTicks: true,
+            color: '#eee'           // warna garis grid X
+          }
         },
-        y: { ticks: { count: 8 } }
+        y: {
+          title: {
+            display: true,
+            text: 'Harga (Rp)',     // 💰 label sumbu Y
+            color: '#111',
+            font: { size: 13, weight: 'bold' }
+          },
+          ticks: {
+            color: '#444',          // warna angka di sumbu Y
+            count: 8
+          },
+          grid: {
+            color: '#eee'           // warna garis horizontal
+          }
+        }
       }
     }
   });
@@ -1679,60 +2078,118 @@ document.addEventListener('DOMContentLoaded', () => {
     // log kecil biar kelihatan
     console.log('[RC] filled', mode, '=>', rcValueSel.options.length, 'opsi');
   }
-
-  async function fetchRegionSummary(mode, value) {
-    const u = `/api/region_summary?mode=${encodeURIComponent(mode)}&value=${encodeURIComponent(value)}`;
-    const r = await fetch(u, { cache: 'no-store' });
-    if (!r.ok) {
-      const js = await r.json().catch(() => ({}));
-      throw new Error(js.error || 'Server error');
-    }
-    return r.json();
+// Helper: render region table rows
+function fillRegionTable(rows){
+  const tbody = document.querySelector('#rc_table tbody');
+  if(!tbody){
+    console.warn('fillRegionTable: tbody not found');
+    return;
   }
 
-  function renderRegionRows(rows) {
-    if (!rcTableBody) return;
-    if (!rows || !rows.length) {
-      rcRenderEmpty('Tidak ada data untuk pilihan ini.');
+  if(!rows || rows.length === 0){
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
+    return;
+  }
+
+  let html = '';
+  rows.forEach(r => {
+    // format periode bulan/year tampil rapi
+    const highPeriod = (r.avg_month_high_month && r.avg_month_high_year) ? `${r.avg_month_high_month}/${r.avg_month_high_year}` : (r.avg_month_high_month ? `${r.avg_month_high_month}` : '—');
+    const lowPeriod  = (r.avg_month_low_month && r.avg_month_low_year) ? `${r.avg_month_low_month}/${r.avg_month_low_year}` : (r.avg_month_low_month ? `${r.avg_month_low_month}` : '—');
+
+    html += `<tr>
+      <td>${r.no ?? ''}</td>
+      <td>${r.city ?? ''}</td>
+      <td>${r.province ?? ''}</td>
+      <td>${r.island ?? ''}</td>
+      <td class="num">${(r.min_value!=null) ? rupiah(Math.round(r.min_value)) : '—'}</td>
+      <td class="num">${r.min_date ?? '—'}</td>
+      <td class="num">${(r.max_value!=null) ? rupiah(Math.round(r.max_value)) : '—'}</td>
+      <td class="num">${r.max_date ?? '—'}</td>
+      <td class="num">${(r.avg_month_high!=null) ? rupiah(Math.round(r.avg_month_high)) : '—'}</td>
+      <td class="num">${highPeriod}</td>
+      <td class="num">${(r.avg_month_low!=null) ? rupiah(Math.round(r.avg_month_low)) : '—'}</td>
+      <td class="num">${lowPeriod}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+}
+
+// simple in-memory cache to avoid repeated calls in short time
+const __RC_CACHE = {}; // key -> {ts, rows}
+const RC_CACHE_TTL = 1000 * 60 * 5; // 5 minutes
+
+async function loadRegionSummaryFromMap(island){
+  const tbody = document.querySelector('#rc_table tbody');
+  const loader = document.getElementById('rc_loading');
+  if(loader) loader.style.display = 'inline-block';
+
+  try{
+    // ambil filter waktu dari UI
+    const year = document.getElementById('b_tahun')?.value || '';
+    const month = document.getElementById('b_bulan')?.value || '';
+    const week = document.getElementById('b_minggu')?.value || '';
+
+    // skip kalau ga ada pulau
+    if(!island){
+      fillRegionTable([]);
       return;
     }
-    rcTableBody.innerHTML = rows.map((r, i) => `
-      <tr>
-        <td style="text-align:center">${r.no ?? (i + 1)}</td>
-        <td>${r.city || '-'}</td>
-        <td>${r.province || '-'}</td>
-        <td>${r.island || '-'}</td>
-        <td class="num">Rp ${fmtIDnum(r.min_value, 0)}</td>
-        <td class="num dim">${rcDatePretty(r.min_date)}</td>
-        <td class="num">Rp ${fmtIDnum(r.max_value, 0)}</td>
-        <td class="num dim">${rcDatePretty(r.max_date)}</td>
-        <td class="num">Rp ${fmtIDnum(r.avg_month_high, 0)}</td>
-        <td class="num dim">${rcPeriod(r.avg_month_high_month, r.avg_month_high_year)}</td>
-        <td class="num">Rp ${fmtIDnum(r.avg_month_low, 0)}</td>
-        <td class="num dim">${rcPeriod(r.avg_month_low_month, r.avg_month_low_year)}</td>
-      </tr>
-    `).join('');
-  }
 
-  async function runRegional() {
-    const mode  = rcModeSel.value || 'island';
-    const value = rcValueSel.value || '';
-    if (!value) { alert('Pilih nilai pada dropdown kedua.'); return; }
-    showSpin(true);
-    try {
-      const js = await fetchRegionSummary(mode, value);
-      renderRegionRows(js.rows || []);
-    } catch (e) {
-      console.error(e);
-      rcRenderEmpty(`Gagal memuat: ${e.message}`);
-    } finally {
-      showSpin(false);
+    const params = new URLSearchParams();
+    params.set('mode', 'island');
+    params.set('value', island);
+    if(year)  params.set('year', year);
+    if(month) params.set('month', month);
+    if(week && month) params.set('week', week);
+
+    // optional: tambahkan ?predict=1 untuk predicted mode otomatis
+    const modeSel = document.getElementById('b_mode');
+    if(modeSel && modeSel.value === 'predicted') {
+      params.set('predict', '1');
     }
+
+    const url = `/api/region_summary?${params.toString()}`;
+    const res = await fetch(url, {cache:'no-store'});
+    const js = await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      console.error('region_summary error', js);
+      fillRegionTable([]);
+      return;
+    }
+
+    fillRegionTable(js.rows || []);
+  }catch(err){
+    console.error('loadRegionSummaryFromMap error', err);
+    fillRegionTable([]);
+  }finally{
+    if(loader) loader.style.display = 'none';
   }
+}
+
+
+
+  // async function runRegional() {
+  //   const mode  = rcModeSel.value || 'island';
+  //   const value = rcValueSel.value || '';
+  //   if (!value) { alert('Pilih nilai pada dropdown kedua.'); return; }
+  //   showSpin(true);
+  //   try {
+  //     const js = await fetchRegionSummary(mode, value);
+  //     renderRegionRows(js.rows || []);
+  //   } catch (e) {
+  //     console.error(e);
+  //     rcRenderEmpty(`Gagal memuat: ${e.message}`);
+  //   } finally {
+  //     showSpin(false);
+  //   }
+  // }
 
   // wiring
-  rcModeSel.addEventListener('change', fillRcValueOptions);
-  rcBtn && rcBtn.addEventListener('click', runRegional);
+  // rcModeSel.addEventListener('change', fillRcValueOptions);
+  // rcBtn && rcBtn.addEventListener('click', runRegional);
 
   // init pertama kali (pasti dipanggil setelah DOM siap)
   fillRcValueOptions();
@@ -1970,11 +2427,12 @@ async function saveAndPredict() {
 
   const file = fileInput.files[0];
   const saveBtn = document.getElementById('saveUploadBtn');
-  const loading = document.getElementById('uploadLoading');
+  const spinner = document.getElementById('uploadSpinner');
+  const label = document.getElementById('uploadLabel');
 
   saveBtn.disabled = true;
-  loading.style.display = 'inline-block';
-  loading.textContent = 'Memproses... (ini bisa lama jika mode full)';
+  spinner.style.display = 'inline-block';
+  label.textContent = 'Memproses...';
 
   try {
     const fd = new FormData();
@@ -2035,15 +2493,26 @@ async function saveAndPredict() {
     renderResults(data);
   }
 
-  const ul = document.getElementById('uploadFullResultsList');
+    const ul = document.getElementById('uploadFullResultsList');
   if (ul) {
-    ul.innerHTML = data.results.map(r =>
-      r.ok
-        ? `<li><b>${escapeHTML ? escapeHTML(r.city || '—') : (r.city||'—')}</b>: OK — best_r2=${r.best_r2 ?? '-'}</li>`
-        : `<li><b>${escapeHTML ? escapeHTML(r.city || '—') : (r.city||'—')}</b>: FAIL — ${escapeHTML ? escapeHTML(r.reason ?? JSON.stringify(r)) : (r.reason??JSON.stringify(r))}</li>`
-    ).join('');
+    ul.innerHTML = data.results.map(r => {
+      const city = escapeHTML ? escapeHTML(r.city || '—') : (r.city || '—');
+      if (r.ok) {
+        // jika backend menambahkan r.pdf_url, tampilkan tombol unduh
+        const reportButton = r.pdf_url
+          ? `<a class="btn-download-report" href="${r.pdf_url}" target="_blank" rel="noopener">📥 Unduh Laporan</a>`
+          : '';
+        return `<li style="margin-bottom:0.4rem;">
+          <b>${city}</b>: OK — best_r2=${r.best_r2 ?? '-'} ${reportButton}
+        </li>`;
+      } else {
+        const reason = escapeHTML ? escapeHTML(r.reason ?? JSON.stringify(r)) : (r.reason ?? JSON.stringify(r));
+        return `<li style="margin-bottom:0.4rem;"><b>${city}</b>: FAIL — ${reason}</li>`;
+      }
+    }).join('');
     document.getElementById('uploadFullSummary')?.style.removeProperty('display');
   }
+
 
   document.getElementById('uploadResults')?.style.removeProperty('display');
   return;
@@ -2067,8 +2536,9 @@ async function saveAndPredict() {
     console.error(err);
     alert('Terjadi error: ' + (err.message || err));
   } finally {
-    loading.style.display = 'none';
-    saveBtn.disabled = false;
+   spinner.style.display = 'none';
+  label.textContent = 'Simpan & Analisis';
+  saveBtn.disabled = false;
   }
 }
 
@@ -2270,7 +2740,29 @@ function renderResults(payload){
     if (fullSummary) fullSummary.style.display = 'none';
     if (ul) ul.innerHTML = '';
   }
+    // --- small: show download button for current payload if pdf_url present ---
+  try {
+    const resultsContainer = document.getElementById('uploadResults');
+    const existing = document.getElementById('downloadEvalBtn');
+    if (existing) existing.remove();
+
+    if (payload && payload.pdf_url) {
+      const a = document.createElement('a');
+      a.id = 'downloadEvalBtn';
+      a.href = payload.pdf_url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.className = 'btn-download-report';
+      a.textContent = '📥 Unduh Laporan Evaluasi (PDF)';
+      // append di atas konten result (ubah jika mau posisi lain)
+      resultsContainer.insertBefore(a, resultsContainer.firstChild);
+    }
+  } catch (e) {
+    console.warn('Failed to render PDF download button', e);
+  }
+
 }
+
 
 
 function downloadTemplateCSV() {
