@@ -21,6 +21,7 @@
     .topbar { position: sticky; top: 0; z-index: 999; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
     .topbar .wrap { max-width: 1200px; margin: 0 auto; padding: .8rem 1rem; display:flex; align-items:center; gap:1rem; }
     .brand-inline { font-weight:700; white-space:nowrap; }
+    
     .top-nav { display:flex; gap:.5rem; flex-wrap:wrap; }
     .top-nav .nav-link { display:inline-block; padding:.5rem .75rem; border-radius:.5rem; text-decoration:none; color:#333; font-weight:600; }
     .top-nav .nav-link.active { background: var(--soft); color: var(--green, #1abc9c); }
@@ -42,21 +43,28 @@
       <button class="btn-telusuri" id="scroll-to-beranda">Telusuri <span class="chev">↓</span></button>
     </div>
   </section>
+<!-- ====== TOP BAR (pengganti sidebar) ====== -->
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand-inline">🛢️ PrediksiMinyak.id</div>
 
-  <!-- ====== TOP BAR (pengganti sidebar) ====== -->
-  <header class="topbar">
-    <div class="wrap">
-      <div class="brand-inline">🛢️ PrediksiMinyak.id</div>
-      <nav class="top-nav">
-        <a href="#" class="nav-link active" data-section="beranda">🏠 Beranda</a>
-        <a href="#" class="nav-link" data-section="tren">📈 Tinjauan Tren</a>
-        <a href="#" class="nav-link" data-section="prediksi">🔮 Prediksi</a>
-        <a href="#" class="nav-link" data-section="upload">🧪 Upload</a>
-       <a href="#" class="nav-link" data-section="tentang">ℹ️ Tentang</a>
+    <!-- ===== ADD: hamburger (CSS-only) ===== -->
+    <input id="nav-toggle" type="checkbox" class="nav-toggle" aria-hidden="true" style="display:none;">
+    <label for="nav-toggle" class="nav-hamburger" aria-hidden="true" title="Buka menu">
+      <span class="hamb-line"></span>
+      <span class="hamb-line"></span>
+      <span class="hamb-line"></span>
+    </label>
 
-      </nav>
-    </div>
-  </header>
+    <nav class="top-nav">
+      <a href="#" class="nav-link active" data-section="beranda">🏠 Beranda</a>
+      <a href="#" class="nav-link" data-section="tren">📈 Tinjauan Tren</a>
+      <a href="#" class="nav-link" data-section="prediksi">🔮 Prediksi</a>
+      <a href="#" class="nav-link" data-section="upload">🧪 Upload</a>
+      <a href="#" class="nav-link" data-section="tentang">ℹ️ Tentang</a>
+    </nav>
+  </div>
+</header>
 
   <!-- ====== KONTEN ====== -->
   <main class="main">
@@ -138,6 +146,18 @@
         <div class="input-section" id="beranda-filter">
           <div class="input-row">
             <div class="input-group">
+            <label for="b_mode">Tampilan</label>
+            <select id="b_mode">
+              <option value="actual">Actual (Data Aktual)</option>
+              <option value="predicted">Predicted (Perkiraan)</option>
+            </select>
+          </div>
+          <div class="input-group" id="horizon_group" style="display:none;">
+          <label for="b_horizon">Horizon (hari)</label>
+          <input id="b_horizon" type="number" min="1" max="90" value="7" style="width:6rem" />
+        </div>
+
+            <div class="input-group">
               <label for="pulau">Pilih Pulau</label>
               <select id="pulau"><option value="">-- Pilih Pulau --</option></select>
             </div>
@@ -186,17 +206,17 @@
         <div class="info-box">
           <h3>Tentang Sistem</h3>
           <p>Sistem ini menggunakan <strong>Gradient Boosting</strong> untuk memprediksi harga minyak goreng berdasarkan data historis PIHPS. Di bawah ini adalah <strong>peta harga rata-rata per provinsi</strong> dengan kategori warna:
-            <span style="color:#2ecc71;font-weight:600;">Hijau</span> (rendah),
-            <span style="color:#f1c40f;font-weight:600;">Kuning</span> (sedang),
-            <span style="color:#e74c3c;font-weight:600;">Merah</span> (tinggi).
+            <span style="color:#2ecc71;font-weight:600;">Hijau</span> (Q1),
+            <span style="color:#f1c40f;font-weight:600;">Kuning</span> (Q2),
+            <span style="color:#e74c3c;font-weight:600;">Merah</span> (Q3).
           </p>
         </div>
 
         <div id="map"></div>
         <div class="legend">
-          <span><i style="background:#2ecc71"></i> Rendah</span>
-          <span><i style="background:#f1c40f"></i> Sedang</span>
-          <span><i style="background:#e74c3c"></i> Tinggi</span>
+          <span><i style="background:#2ecc71"></i> Q1</span>
+          <span><i style="background:#f1c40f"></i> Q2</span>
+          <span><i style="background:#e74c3c"></i> Q3</span>
         </div>
 
         <div class="stats-grid" style="margin-top:1rem">
@@ -209,31 +229,6 @@
         <section class="card-section" id="regional-correlation">
   <h2 class="section-title">Eksplor Kab/Kota per Pulau atau Provinsi</h2>
 
-  <div class="input-section">
-    <div class="input-row">
-      <div class="input-group" style="min-width:200px;">
-        <label for="rc_mode">Mode</label>
-        <select id="rc_mode">
-          <option value="island">Per Pulau</option>
-          <option value="province">Per Provinsi</option>
-        </select>
-      </div>
-
-      <div class="input-group" style="min-width:260px;">
-        <label for="rc_value">Pilih Pulau / Provinsi</label>
-        <select id="rc_value">
-          <option value="">-- Pilih --</option>
-        </select>
-      </div>
-
-      <div class="input-group" style="align-self:flex-end;">
-        <button class="btn" id="rc_btn">
-          Tampilkan
-          <span class="loading" id="rc_loading" style="display:none;"></span>
-        </button>
-      </div>
-    </div>
-  </div>
 
   <div class="table-card">
     <table class="nice-table" id="rc_table">
@@ -452,14 +447,9 @@
     -->
   </div>
 </div>
-<!-- ===== CUT-OFF MODAL & CUT-OFF CONFIG ===== -->
-<!-- meletakkan data-test-cutoff di wrapper prediksi supaya server bisa render dinamis -->
-<!-- Jika kamu ingin server yang menentukan cutoff, set attribute ini saat render server-side -->
+
 <script>
-  // If you prefer server-side rendering, server can inject a script like:
-  // document.addEventListener('DOMContentLoaded', () => {
-  //   document.getElementById('prediksi').dataset.testCutoff = '2025-07-01';
-  // });
+ 
 </script>
 
 <!-- Modal markup -->
@@ -554,10 +544,13 @@
   <div class="upload-submit">
     <button class="btn-submit" id="saveUploadBtn" onclick="saveAndPredict()" disabled>
       <span>💾</span>
-      <span>Simpan & Analisis</span>
-      <span class="loading" id="uploadLoading" style="display:none;"></span>
+      <span id="uploadLabel">Simpan & Analisis</span>
+      <!-- spinner only — text will NOT be put inside this element -->
+      <span id="uploadSpinner" class="btn-spinner" style="display:none;" aria-hidden="true"></span>
     </button>
+
   </div>
+
 
   <!-- Results Section (existing) -->
   <!-- Results Section (existing) -->
@@ -572,6 +565,13 @@
   <div id="uploadFullSummary" style="display:none; margin-bottom:1rem; border-left:4px solid #e6f4ea; padding:0.6rem 0.8rem; background:#fbfff9;">
     <h3 style="margin:0 0 0.5rem 0">Hasil Pelatihan (Full mode)</h3>
     <p style="margin:0 0 0.5rem 0;color:#374151">Ringkasan training per kota. Klik nama kota untuk melihat detail pada panel utama.</p>
+  </div>
+  <div id="uploadFullSummary" style="display:none; margin-bottom:1rem; border-left:4px solid #e6f4ea; padding:0.6rem 0.8rem; background:#fbfff9;">
+    <h3 style="margin:0 0 0.5rem 0">Hasil Pelatihan (Full mode)</h3>
+    <p style="margin:0 0 0.5rem 0;color:#374151">Ringkasan training per kota. Klik nama kota untuk melihat detail pada panel utama.</p>
+
+    <!-- <-- ADD this list where per-city results (and download buttons) will appear -->
+    <ul id="uploadFullResultsList" style="margin:0; padding-left:1rem;"></ul>
   </div>
 
   <div class="card-section">
