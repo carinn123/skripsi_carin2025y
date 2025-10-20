@@ -230,33 +230,42 @@
   <h2 class="section-title">Eksplor Kab/Kota per Pulau atau Provinsi</h2>
 
 
-  <div class="table-card">
-    <table class="nice-table" id="rc_table">
-      <thead>
-        <tr>
-          <th style="width:56px">No</th>
-          <th>Kabupaten/Kota</th>
-          <th>Provinsi</th>
-          <th>Pulau</th>
-          <th class="num">Harga Terendah</th>
-          <th class="num">Tanggal Terendah</th>
-          <th class="num">Harga Tertinggi</th>
-          <th class="num">Tanggal Tertinggi</th>
-          <th class="num">Rata2 Bulan Tertinggi</th>
-          <th class="num">Periode</th>
-          <th class="num">Rata2 Bulan Terendah</th>
-          <th class="num">Periode</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td colspan="12" style="text-align:center;color:var(--muted)">
-            Pilih mode & nilai pada dropdown, lalu klik <b>Tampilkan</b>.
-          </td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="table-card" id="rc_table_container">
+  <table class="nice-table" id="rc_table">
+    <thead>
+      <tr>
+        <th style="width:56px">No</th>
+        <th>Kabupaten/Kota</th>
+        <th>Provinsi</th>
+        <th>Pulau</th>
+        <th class="num">Harga Terendah</th>
+        <th class="num">Tanggal Terendah</th>
+        <th class="num">Harga Tertinggi</th>
+        <th class="num">Tanggal Tertinggi</th>
+        <th class="num">Rata2 Bulan Tertinggi</th>
+        <th class="num">Periode</th>
+        <th class="num">Rata2 Bulan Terendah</th>
+        <th class="num">Periode</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td colspan="12" style="text-align:center;color:var(--muted)">
+          Pilih mode & nilai pada dropdown, lalu klik <b>Tampilkan</b>.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PAGINATION UI (JS akan mengisi/mengontrol elemen ini) -->
+  <div id="rc_table_pager" style="margin-top:0.5rem; display:flex; align-items:center; gap:0.5rem;"></div>
+
+  <!-- optional small note -->
+  <div id="rc_table_note" style="margin-top:0.25rem; color:var(--muted); font-size:0.9rem;">
+    Menampilkan <span id="rc_table_shown_count">0</span> dari <span id="rc_table_total_count">0</span> baris.
   </div>
+</div>
+
 </section>
 
       </div>
@@ -266,7 +275,7 @@
       <h2 class="section-title">Tinjauan Tren Harga Minyak Goreng</h2>
 
     <!-- INPUT -->
-      <div class="input-section">
+      <div class="input-section"> 
         <div class="input-row">
           <div class="input-group" style="flex:2">
             <label for="kabupaten">Kab/Kota 1</label>

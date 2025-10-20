@@ -190,13 +190,7 @@ function selectedSlugOrLabel(selectEl){
   const opt = selectEl.options[selectEl.selectedIndex];
   return (opt?.dataset?.slug || opt?.dataset?.label || opt?.value || "").trim().toLowerCase();
 }
-// function getSelectedCityLabel(){ // dipakai mode tren single lama
-//   const sel=document.getElementById('kabupaten');
-//   const opt=sel?.options[sel.selectedIndex];
-//   return opt?.dataset?.label || sel?.value || "";
-// }
 
-// ===== Inisialisasi Cities (semua dropdown yang ada)
 async function initCities(){
   const targetIds = ['kabupaten','kabupaten2','kabupaten_a','ev_city']
     .filter(id => document.getElementById(id));
@@ -247,7 +241,6 @@ b_bulanSel?.addEventListener('change',()=>{
   else {b_mingguSel.disabled=false;}
 });
 
-// ===== MAP (Beranda)
 function normProv(s){
   if(!s) return "";
   // trim + ke lowercase
@@ -290,7 +283,173 @@ function hideMapValidation(){
 }
 
 
-// === showMapBeranda (update versi final) ===
+// small helper to avoid XSS
+function escapeHtml(s){
+  if(!s && s !== 0) return '';
+  return String(s).replace(/[&<>"']/g, (m)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function renderPager(meta, onPage) {
+  const container = document.getElementById('rc_table_pager');
+  const shownEl = document.getElementById('rc_table_shown_count');
+  const totalEl = document.getElementById('rc_table_total_count');
+  if(!container) {
+    console.warn('renderPager: container #rc_table_pager not found');
+    return;
+  }
+  container.innerHTML = '';
+
+  const total = meta && Number.isFinite(meta.count) ? meta.count : 0;
+  const page = meta && meta.page ? Math.max(1, meta.page) : 1;
+  const ps = meta && meta.page_size ? meta.page_size : 25;
+  const totalPages = total > 0 ? Math.max(1, Math.ceil(total / ps)) : 1;
+  const start = total === 0 ? 0 : ((page - 1) * ps) + 1;
+  const end = Math.min(total, page * ps);
+
+  if(shownEl) shownEl.textContent = (total === 0 ? 0 : (end - start + 1));
+  if(totalEl) totalEl.textContent = total;
+
+  // create buttons and assign classes
+  const prev = document.createElement('button');
+  prev.textContent = '◀ Prev';
+  prev.disabled = page <= 1;
+  prev.className = 'pager-btn';
+
+  const next = document.createElement('button');
+  next.textContent = 'Next ▶';
+  next.disabled = page >= totalPages;
+  next.className = 'pager-btn primary';
+
+  const info = document.createElement('span');
+  info.className = 'pager-info';
+  info.style.margin = '0 8px';
+  info.textContent = `Halaman ${page} / ${totalPages} • Menampilkan ${start}-${end} dari ${total}`;
+
+  prev.addEventListener('click', () => onPage(Math.max(1, page - 1)));
+  next.addEventListener('click', () => onPage(Math.min(totalPages, page + 1)));
+
+  container.appendChild(prev);
+  container.appendChild(info);
+  container.appendChild(next);
+
+  if(totalPages > 1){
+    const gotoLabel = document.createElement('span');
+    gotoLabel.style.marginLeft='8px';
+    gotoLabel.textContent='Lompat ke:';
+
+    const gotoInput = document.createElement('input');
+    gotoInput.type='number';
+    gotoInput.min=1;
+    gotoInput.max=totalPages;
+    gotoInput.value=page;
+    gotoInput.className = 'pager-input';
+    gotoInput.style.marginLeft='6px';
+
+    const gotoBtn = document.createElement('button');
+    gotoBtn.textContent='Go';
+    gotoBtn.className = 'pager-btn';
+    gotoBtn.addEventListener('click', () => {
+      let v = parseInt(gotoInput.value || '1', 10);
+      if(isNaN(v) || v < 1) v = 1;
+      if(v > totalPages) v = totalPages;
+      onPage(v);
+    });
+
+    container.appendChild(gotoLabel);
+    container.appendChild(gotoInput);
+    container.appendChild(gotoBtn);
+  }
+}
+
+const CLIENT_PAGE_SIZE = 25;
+const RC_CACHE_TTL = 1000 * 60 * 5;
+const __RC_CACHE = {};
+
+function fillRegionTable(rows){
+  console.log('fillRegionTable called, rows:', Array.isArray(rows) ? rows.length : typeof rows, rows && rows[0]);
+  // quick DOM sanity checks
+  const tableEls = document.querySelectorAll('#rc_table');
+  if(tableEls.length === 0){
+    console.error('fillRegionTable: #rc_table not found in DOM!');
+    return;
+  }
+  if(tableEls.length > 1){
+    console.warn('fillRegionTable: multiple #rc_table found! Removing duplicates may help.', tableEls);
+  }
+
+  let tbody = document.querySelector('#rc_table tbody');
+  if(!tbody){
+    console.warn('fillRegionTable: tbody not found — creating one.');
+    const t = document.getElementById('rc_table');
+    const newTbody = document.createElement('tbody');
+    t.appendChild(newTbody);
+    // re-query
+    tbody = document.querySelector('#rc_table tbody');
+    if(!tbody){
+      console.error('fillRegionTable: gagal membuat tbody');
+      return;
+    }
+  }
+
+  // defensive: if rows not array, clear and show message
+  if(!rows || !Array.isArray(rows) || rows.length === 0){
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
+    // update counts
+    const shownEl = document.getElementById('rc_table_shown_count');
+    const totalEl = document.getElementById('rc_table_total_count');
+    if(shownEl) shownEl.textContent = 0;
+    if(totalEl && window.__LAST_RC_META) totalEl.textContent = window.__LAST_RC_META.count || 0;
+    return;
+  }
+
+  // build rows robustly (handle missing keys gracefully)
+  let html = '';
+  rows.forEach((r, idx) => {
+    // allow either r.city or r.province-only entries
+    const city = r.city ?? r.name ?? r.entity ?? '';
+    const province = r.province ?? '';
+    const island = r.island ?? '';
+    const min_value = (r.min_value != null) ? rupiah(Math.round(r.min_value)) : '—';
+    const max_value = (r.max_value != null) ? rupiah(Math.round(r.max_value)) : '—';
+    const avg_high = (r.avg_month_high != null) ? rupiah(Math.round(r.avg_month_high)) : '—';
+    const highPeriod = (r.avg_month_high_month && r.avg_month_high_year) ? `${r.avg_month_high_month}/${r.avg_month_high_year}` :
+                       (r.avg_month_high_month ? `${r.avg_month_high_month}` : '—');
+    const lowPeriod = (r.avg_month_low_month && r.avg_month_low_year) ? `${r.avg_month_low_month}/${r.avg_month_low_year}` :
+                      (r.avg_month_low_month ? `${r.avg_month_low_month}` : '—');
+
+    const no = r.no ?? ( (window.__LAST_RC_META && window.__LAST_RC_META.page && window.__LAST_RC_META.page_size) 
+                        ? ((window.__LAST_RC_META.page - 1) * window.__LAST_RC_META.page_size + idx + 1) : idx + 1);
+
+    html += `<tr>
+      <td>${no}</td>
+      <td>${escapeHtml(city)}</td>
+      <td>${escapeHtml(province)}</td>
+      <td>${escapeHtml(island)}</td>
+      <td class="num">${min_value}</td>
+      <td class="num">${r.min_date ?? '—'}</td>
+      <td class="num">${max_value}</td>
+      <td class="num">${r.max_date ?? '—'}</td>
+      <td class="num">${avg_high}</td>
+      <td class="num">${highPeriod}</td>
+      <td class="num">${(r.avg_month_low!=null)? rupiah(Math.round(r.avg_month_low)) : '—'}</td>
+      <td class="num">${lowPeriod}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+
+  // update count note (use meta cached globally if available)
+  const shownEl = document.getElementById('rc_table_shown_count');
+  const totalEl = document.getElementById('rc_table_total_count');
+  if(window.__LAST_RC_META){
+    if(shownEl) shownEl.textContent = (window.__LAST_RC_META.rows_shown || rows.length);
+    if(totalEl) totalEl.textContent = (window.__LAST_RC_META.count || 0);
+  } else {
+    if(shownEl) shownEl.textContent = rows.length;
+    if(totalEl) totalEl.textContent = rows.length;
+  }
+}
+
+
 async function showMapBeranda(event){
   const islandInput = document.getElementById('pulau');
   const island = islandInput ? islandInput.value.trim() : '';
@@ -311,8 +470,8 @@ async function showMapBeranda(event){
     showMapValidation('Pilih Tahun terlebih dahulu.');
     return;
   }
-  if(mode === 'predicted' && !bulan){
-    showMapValidation('Untuk Predicted, silakan pilih Bulan terlebih dahulu.');
+  if(mode === 'predicted' && minggu && !bulan){
+    showMapValidation('Jika memilih Minggu, silakan pilih Bulan terlebih dahulu.');
     return;
   }
   hideMapValidation();
@@ -427,92 +586,99 @@ async function showMapBeranda(event){
 
 window.showMapBeranda = showMapBeranda;
 
+async function fetchJsonWithRetry(url, tries = 2) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      const text = await res.text(); // ambil text mentah
+      if (!text || !text.trim()) {
+        console.warn(`fetchJsonWithRetry: Empty response body on try ${i + 1}`);
+        if (i < tries - 1) await new Promise(r => setTimeout(r, 300));
+        continue;
+      }
 
-// >>> ADDED >>> START helper functions for region table (paste after showMapBeranda)
-
-// render rows into #rc_table tbody
-function fillRegionTable(rows){
-  const tbody = document.querySelector('#rc_table tbody');
-  if(!tbody){
-    console.warn('fillRegionTable: tbody not found');
-    return;
+      try {
+        const data = JSON.parse(text);
+        if (!res.ok) {
+          console.warn(`fetchJsonWithRetry: HTTP ${res.status} but parsed JSON`, data);
+        }
+        return data; // sukses
+      } catch (e) {
+        console.warn(`fetchJsonWithRetry: JSON parse error on try ${i + 1}`, e, text.slice(0, 300));
+        if (i < tries - 1) await new Promise(r => setTimeout(r, 300));
+        continue;
+      }
+    } catch (e) {
+      console.error(`fetchJsonWithRetry: Fetch failed on try ${i + 1}`, e);
+      if (i < tries - 1) await new Promise(r => setTimeout(r, 300));
+    }
   }
-  if(!rows || rows.length === 0){
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
-    return;
-  }
 
-  let html = '';
-  rows.forEach(r => {
-    const highPeriod = (r.avg_month_high_month && r.avg_month_high_year) ? `${r.avg_month_high_month}/${r.avg_month_high_year}` :
-                       (r.avg_month_high_month ? `${r.avg_month_high_month}` : '—');
-    const lowPeriod  = (r.avg_month_low_month && r.avg_month_low_year) ? `${r.avg_month_low_month}/${r.avg_month_low_year}` :
-                       (r.avg_month_low_month ? `${r.avg_month_low_month}` : '—');
-
-    html += `<tr>
-      <td>${r.no ?? ''}</td>
-      <td>${r.city ?? ''}</td>
-      <td>${r.province ?? ''}</td>
-      <td>${r.island ?? ''}</td>
-      <td class="num">${(r.min_value!=null) ? rupiah(Math.round(r.min_value)) : '—'}</td>
-      <td class="num">${r.min_date ?? '—'}</td>
-      <td class="num">${(r.max_value!=null) ? rupiah(Math.round(r.max_value)) : '—'}</td>
-      <td class="num">${r.max_date ?? '—'}</td>
-      <td class="num">${(r.avg_month_high!=null) ? rupiah(Math.round(r.avg_month_high)) : '—'}</td>
-      <td class="num">${highPeriod}</td>
-      <td class="num">${(r.avg_month_low!=null) ? rupiah(Math.round(r.avg_month_low)) : '—'}</td>
-      <td class="num">${lowPeriod}</td>
-    </tr>`;
-  });
-
-  tbody.innerHTML = html;
+  console.error('fetchJsonWithRetry: All tries failed', url);
+  return null;
 }
 
-// load by island (called automatically after showMapBeranda)
-const __RC_CACHE = {}; // simple in-memory cache
-const RC_CACHE_TTL = 1000 * 60 * 5; // 5 minutes
-
-async function loadRegionSummaryFromMap(island){
+async function loadRegionSummaryFromMap(island, page = 1){
+  console.log('loadRegionSummaryFromMap called', { island, page });
   const tbody = document.querySelector('#rc_table tbody');
   const loader = document.getElementById('rc_loading');
   if(loader) loader.style.display = 'inline-block';
-
   try{
     if(!island){
       fillRegionTable([]);
+      renderPager({count:0,page:1,page_size:25}, ()=>{});
       return;
     }
 
-    const key = `island:${island}`;
+    const key = `island:${island}:page:${page}`;
     const now = Date.now();
     if(__RC_CACHE[key] && (now - __RC_CACHE[key].ts) < RC_CACHE_TTL){
-      fillRegionTable(__RC_CACHE[key].rows);
+      const js = __RC_CACHE[key].data;
+      console.log('rc cache hit', key, js);
+      // ensure global meta exists for fillRegionTable
+      window.__LAST_RC_META = { count: js.count || 0, page: js.page || page, page_size: js.page_size || 25, rows_shown: (js.rows||[]).length };
+      fillRegionTable(js.rows || []);
+      renderPager({count: js.count || 0, page: js.page || page, page_size: js.page_size || 25}, (p)=> loadRegionSummaryFromMap(island, p));
       return;
     }
 
-    const url = `/api/region_summary?mode=island&value=${encodeURIComponent(island)}`;
-    const res = await fetch(url, {cache:'no-store'});
-    const js = await res.json().catch(()=>({}));
-
-    if(!res.ok){
-      console.error('region_summary error', js);
+    // request page_size 25 (keep consistent)
+    const req_page_size = 25;
+    const url = `/api/region_summary?mode=island&value=${encodeURIComponent(island)}&page=${page}&page_size=${req_page_size}`;
+    console.log('fetch region_summary', url);
+  
+    const js = await fetchJsonWithRetry(url);
+    if (!js) {
+      console.warn('fetchJsonWithRetry returned null for', url);
       fillRegionTable([]);
+      renderPager({count:0,page:1,page_size:req_page_size}, ()=>{});
       return;
     }
+    // js sudah berisi parsed JSON (atau object); log untuk debug
+    console.log('region_summary response', js);
 
     const rows = js.rows || [];
+    const total = Number.isFinite(js.count) ? js.count : (rows.length || 0);
+    const page_ret = js.page || page;
+    const page_size = js.page_size || req_page_size;
+
+    // store global meta for fillRegionTable (important)
+    window.__LAST_RC_META = { count: total, page: page_ret, page_size: page_size, rows_shown: rows.length };
+
+    __RC_CACHE[key] = { ts: now, data: { rows, count: total, page: page_ret, page_size } };
+
     fillRegionTable(rows);
-    __RC_CACHE[key] = { ts: now, rows };
+    renderPager({count: total, page: page_ret, page_size}, (p)=> loadRegionSummaryFromMap(island, p));
+
   }catch(err){
     console.error('loadRegionSummaryFromMap error', err);
     fillRegionTable([]);
+    renderPager({count:0,page:1,page_size:25}, ()=>{});
   }finally{
     if(loader) loader.style.display = 'none';
   }
 }
-
-// load by province (called when user clicks a province on the map)
-async function loadRegionSummaryForProvince(prov){
+async function loadRegionSummaryForProvince(prov, page = 1){
   const tbody = document.querySelector('#rc_table tbody');
   const loader = document.getElementById('rc_loading');
   if(loader) loader.style.display = 'inline-block';
@@ -520,39 +686,54 @@ async function loadRegionSummaryForProvince(prov){
   try{
     if(!prov){
       fillRegionTable([]);
+      renderPager({count:0,page:1,page_size:25}, ()=>{});
       return;
     }
-    const key = `province:${prov}`;
+    const key = `province:${prov}:page:${page}`;
     const now = Date.now();
     if(__RC_CACHE[key] && (now - __RC_CACHE[key].ts) < RC_CACHE_TTL){
-      fillRegionTable(__RC_CACHE[key].rows);
+      const js = __RC_CACHE[key].data;
+      console.log('rc cache hit', key, js);
+      window.__LAST_RC_META = { count: js.count || 0, page: js.page || page, page_size: js.page_size || 25, rows_shown: (js.rows||[]).length };
+      fillRegionTable(js.rows || []);
+      renderPager({count: js.count || 0, page: js.page || page, page_size: js.page_size || 25}, (p)=> loadRegionSummaryForProvince(prov, p));
       return;
     }
 
-    const url = `/api/region_summary?mode=province&value=${encodeURIComponent(prov)}`;
+    const req_page_size = 25;
+    const url = `/api/region_summary?mode=province&value=${encodeURIComponent(prov)}&page=${page}&page_size=${req_page_size}`;
+    console.log('fetch region_summary province', url);
     const res = await fetch(url, {cache:'no-store'});
     const js = await res.json().catch(()=>({}));
+    console.log('region_summary(province) response', res.status, js);
 
     if(!res.ok){
       console.error('region_summary (province) error', js);
       fillRegionTable([]);
+      renderPager({count:0,page:1,page_size:req_page_size}, ()=>{});
       return;
     }
 
     const rows = js.rows || [];
+    const total = Number.isFinite(js.count) ? js.count : (rows.length || 0);
+    const page_ret = js.page || page;
+    const page_size = js.page_size || req_page_size;
+
+    window.__LAST_RC_META = { count: total, page: page_ret, page_size: page_size, rows_shown: rows.length };
+
+    __RC_CACHE[key] = { ts: now, data: { rows, count: total, page: page_ret, page_size } };
+
     fillRegionTable(rows);
-    __RC_CACHE[key] = { ts: now, rows };
+    renderPager({count: total, page: page_ret, page_size}, (p)=> loadRegionSummaryForProvince(prov, p));
+
   }catch(err){
     console.error('loadRegionSummaryForProvince error', err);
     fillRegionTable([]);
+    renderPager({count:0,page:1,page_size:25}, ()=>{});
   }finally{
     if(loader) loader.style.display = 'none';
   }
 }
-
-// >>> ADDED >>> END helper functions
-
-// tambahan: bila user ganti mode, update UI (hanya untuk UX)
 const bmode = document.getElementById('b_mode');
 if(bmode){
   bmode.addEventListener('change', function(){
@@ -565,10 +746,6 @@ if(bmode){
 }
 
 
-
-
-
-// ===== TINJAUAN TREN (single & compare)
 let trendChart=null;
 function renderTrendChart(series,granularity,title){
   const placeholder=document.getElementById('trendPlaceholder');
@@ -613,7 +790,6 @@ function renderTrendChartCompare(labels, valuesA, valuesB, nameA, nameB, granula
   if (trendChart) trendChart.destroy();
   trendChart = new Chart(ctx, { type:'line', data, options });
 }
-
 
 function updateTrendStats(s) {
   // s diharapkan punya: min, max, mean, vol_pct (aman kalau null)
@@ -867,7 +1043,6 @@ function renderTrendChartCombined(labels, valuesA, valuesB, nameA, nameB){
   });
 }
 
-
 async function loadData(){
   const selA = document.getElementById('kabupaten');
   const selB = document.getElementById('kabupaten2');
@@ -986,7 +1161,6 @@ async function loadData(){
 
 window.loadData = loadData;
 
-// ===== PREDIKSI (compare 2 kota)
 function _fmtNum(n){ return (n==null || Number.isNaN(n)) ? '-' : rupiah(Math.round(n)); }
 function _fmtPct(n){ return (n==null || Number.isNaN(n)) ? '-' : Number(n).toFixed(2); }
 
@@ -1049,12 +1223,8 @@ function _statsFromSeries(labels, values){
 }
 
 
-
-
 let _predChart = null;
 
-// === Plugin: paksa jumlah tick X ===
-// === Plugin: paksa jumlah tick X jadi persis N ===
 const forceXTicksPlugin = {
   id: 'forceXTicks',
   afterBuildTicks(chart, args, opts) {
@@ -1081,7 +1251,6 @@ const forceXTicksPlugin = {
 };
 if (window.Chart) Chart.register(forceXTicksPlugin);
 
-// Pastikan plugin ter-register
 function getTestCutoff() {
   try {
     const el = document.getElementById('prediksi');
@@ -1090,7 +1259,6 @@ function getTestCutoff() {
   return '2025-07-01'; // fallback
 }
 
-// ---------- modal helper (sama seperti sebelumnya) ----------
 function showTestCutoffModal(cutoffIso) {
   return new Promise((resolve) => {
     const modal = document.getElementById('test-cutoff-modal');
@@ -1283,6 +1451,9 @@ async function fetchPredictRange(citySlug, startISO, endISO, mode = 'test') {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+
+
+
 
 (function dropdownKabupaten(){
   const btn    = document.getElementById('kabupatenBtn');
@@ -1523,18 +1694,65 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'test' }) {
         dataVals.push(Number(p.value));
       }
 
-      try {
+      try {   
         if (window.quickChartRef && window.quickChartRef.destroy) {
-          window.quickChartRef.destroy();
-          window.quickChartRef = null;
-        }
+      window.quickChartRef.destroy();
+      window.quickChartRef = null;
+       }
         if (typeof Chart !== 'undefined') {
           window.quickChartRef = new Chart(chartCanvas.getContext('2d'), {
             type: 'line',
             data: { labels: labels, datasets: [{ label: 'Harga (Rp/L)', data: dataVals, tension: 0.2, fill:false }]},
-            options: { plugins:{legend:{display:false}}, scales:{ x:{display:true}, y:{display:true} }, responsive:true, maintainAspectRatio:false }
+            options: {
+              plugins: { legend: { display: false } },
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  display: true,
+                  title: {
+                    display: true,
+                    text: 'Tanggal',
+                    color: '#111',
+                    font: { size: 12, weight: '600' }
+                  },
+                  ticks: {
+                    autoSkip: true,
+                    maxRotation: 0,
+                    color: '#444',
+                    callback(value, index, ticks) {
+                      // menjaga format tanggal jika labelnya string ISO 'YYYY-MM-DD'
+                      const raw = this?.chart?.data?.labels?.[value] ?? (ticks?.[index]?.label ?? value);
+                      if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+                        const [y,m,d] = raw.split('-');
+                        const mon = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][+m-1];
+                        return `${d} ${mon}`;
+                      }
+                      return String(raw ?? '');
+                    }
+                  },
+                  grid: { color: '#f7f7f7' }
+                },
+                y: {
+                  display: true,
+                  title: {
+                    display: true,
+                    text: 'Harga (Rp)',
+                    color: '#111',
+                    font: { size: 12, weight: '600' }
+                  },
+                  ticks: {
+                    color: '#444',
+                    // format ke rupiah (menggunakan Intl.NumberFormat agar konsisten)
+                    callback: v => 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(v))
+                  },
+                  grid: { color: '#eee' }
+                }
+              }
+            }
           });
         }
+      
       } catch (err) { console.warn("quick chart error", err); }
     }
 
@@ -1554,8 +1772,6 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'test' }) {
     return null;
   }
 }
-
-// Isi select #quick_kabupaten dari endpoint /api/cities_full
 async function populateQuickSelect() {
   const sel = document.getElementById('quick_kabupaten');
   if (!sel) {
@@ -1586,7 +1802,6 @@ async function populateQuickSelect() {
     // leave existing static options in place as fallback
   }
 }
-
 
 async function loadPrediksi(){
   // fallback ke #kabupaten kalau #kabupaten_a tidak ada
@@ -1664,7 +1879,6 @@ async function loadPrediksi(){
 }
 window.loadPrediksi = loadPrediksi;
 
-
 async function loadEvaluasi(){
   const citySel = document.getElementById('ev_city');
   const city    = selectedSlugOrLabel(citySel);
@@ -1737,7 +1951,6 @@ async function loadEvaluasi(){
   }
 };
 
-// ===== Default tanggal Prediksi (opsional 30 hari terakhir)
 document.addEventListener('DOMContentLoaded', () => {
   const end = new Date();
   const start = new Date(); start.setDate(end.getDate() - 30);
@@ -1773,7 +1986,6 @@ function getMonthKey(dateStr){
   const d=new Date(dateStr+"T00:00:00");
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 }
-// points: [{date:'YYYY-MM-DD', value:number}]
 function aggregate(points, mode){
   if(mode==='daily') {
     const labels = points.map(p=>p.date);
@@ -1820,7 +2032,6 @@ function renderEvaluasiChart(labels, actualAvg, predAvg, title){
 // boot
 initCities();
 
-/* 1) Animated ink underline for nav */
 (function navInk(){
   const nav = document.querySelector('.top-nav');
   if (!nav) return;
@@ -1933,9 +2144,6 @@ initCities();
   Chart.defaults.elements.point.radius = 0;
 })();
 
-/* 7) Scroll tombol Telusuri tetap bekerja */
-
-  // ================= TOP-N dari Excel =================
 function fmtID(x, dec=0){
   if (x==null || Number.isNaN(x)) return '-';
   return new Intl.NumberFormat('id-ID', {maximumFractionDigits: dec, minimumFractionDigits: dec}).format(x);
@@ -1997,6 +2205,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 
 
+
+
+
+
+
+
 // ================= Regional Correlation (Pulau/Provinsi) =================
 document.addEventListener('DOMContentLoaded', () => {
   const rcModeSel   = document.getElementById('rc_mode');    // 'island' | 'province'
@@ -2036,6 +2250,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try { return new Date(iso+"T00:00:00").toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}); }
     catch { return iso; }
   };
+  
+
 
   async function loadIslandsList() {
     try {
@@ -2079,95 +2295,6 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('[RC] filled', mode, '=>', rcValueSel.options.length, 'opsi');
   }
 // Helper: render region table rows
-function fillRegionTable(rows){
-  const tbody = document.querySelector('#rc_table tbody');
-  if(!tbody){
-    console.warn('fillRegionTable: tbody not found');
-    return;
-  }
-
-  if(!rows || rows.length === 0){
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
-    return;
-  }
-
-  let html = '';
-  rows.forEach(r => {
-    // format periode bulan/year tampil rapi
-    const highPeriod = (r.avg_month_high_month && r.avg_month_high_year) ? `${r.avg_month_high_month}/${r.avg_month_high_year}` : (r.avg_month_high_month ? `${r.avg_month_high_month}` : '—');
-    const lowPeriod  = (r.avg_month_low_month && r.avg_month_low_year) ? `${r.avg_month_low_month}/${r.avg_month_low_year}` : (r.avg_month_low_month ? `${r.avg_month_low_month}` : '—');
-
-    html += `<tr>
-      <td>${r.no ?? ''}</td>
-      <td>${r.city ?? ''}</td>
-      <td>${r.province ?? ''}</td>
-      <td>${r.island ?? ''}</td>
-      <td class="num">${(r.min_value!=null) ? rupiah(Math.round(r.min_value)) : '—'}</td>
-      <td class="num">${r.min_date ?? '—'}</td>
-      <td class="num">${(r.max_value!=null) ? rupiah(Math.round(r.max_value)) : '—'}</td>
-      <td class="num">${r.max_date ?? '—'}</td>
-      <td class="num">${(r.avg_month_high!=null) ? rupiah(Math.round(r.avg_month_high)) : '—'}</td>
-      <td class="num">${highPeriod}</td>
-      <td class="num">${(r.avg_month_low!=null) ? rupiah(Math.round(r.avg_month_low)) : '—'}</td>
-      <td class="num">${lowPeriod}</td>
-    </tr>`;
-  });
-
-  tbody.innerHTML = html;
-}
-
-// simple in-memory cache to avoid repeated calls in short time
-const __RC_CACHE = {}; // key -> {ts, rows}
-const RC_CACHE_TTL = 1000 * 60 * 5; // 5 minutes
-
-async function loadRegionSummaryFromMap(island){
-  const tbody = document.querySelector('#rc_table tbody');
-  const loader = document.getElementById('rc_loading');
-  if(loader) loader.style.display = 'inline-block';
-
-  try{
-    // ambil filter waktu dari UI
-    const year = document.getElementById('b_tahun')?.value || '';
-    const month = document.getElementById('b_bulan')?.value || '';
-    const week = document.getElementById('b_minggu')?.value || '';
-
-    // skip kalau ga ada pulau
-    if(!island){
-      fillRegionTable([]);
-      return;
-    }
-
-    const params = new URLSearchParams();
-    params.set('mode', 'island');
-    params.set('value', island);
-    if(year)  params.set('year', year);
-    if(month) params.set('month', month);
-    if(week && month) params.set('week', week);
-
-    // optional: tambahkan ?predict=1 untuk predicted mode otomatis
-    const modeSel = document.getElementById('b_mode');
-    if(modeSel && modeSel.value === 'predicted') {
-      params.set('predict', '1');
-    }
-
-    const url = `/api/region_summary?${params.toString()}`;
-    const res = await fetch(url, {cache:'no-store'});
-    const js = await res.json().catch(()=>({}));
-
-    if(!res.ok){
-      console.error('region_summary error', js);
-      fillRegionTable([]);
-      return;
-    }
-
-    fillRegionTable(js.rows || []);
-  }catch(err){
-    console.error('loadRegionSummaryFromMap error', err);
-    fillRegionTable([]);
-  }finally{
-    if(loader) loader.style.display = 'none';
-  }
-}
 
 
 
@@ -2215,13 +2342,6 @@ function updateEvalCards(metrics) {
   // set('performanceGrade', grade);
 }
 
-/**
- * Try several slug variants and call /api/eval_summary?city=...
- * On success: call updateEvalCards(metrics) and optionally show label.
- * On fail : set cards to '-' (via updateEvalCards with null) and log.
- */
-
-// Replace earlier multi-candidate function with this single-call version
 async function fetchAndRenderEvalForCity(cityInput) {
   if (!cityInput) {
     updateEvalCards(null);
@@ -2267,7 +2387,6 @@ async function fetchAndRenderEvalForCity(cityInput) {
   }
 }
 
-// --- helper tambahan untuk HTML safety (supaya tidak error di innerHTML) ---
 function escapeHTML(str) {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -2405,7 +2524,6 @@ function handleFileSelect(evt) {
   document.getElementById('saveUploadBtn').disabled = false;
 }
 
-// simple helpers for downloading templates (kamu bisa generate file server-side too)
 function downloadTemplateCSV() {
   const csv = "date,City A,City B\n2023-01-01,0,0\n";
   const blob = new Blob([csv], {type: 'text/csv'});
@@ -2765,18 +2883,18 @@ function renderResults(payload){
 
 
 
-function downloadTemplateCSV() {
-  const csv = "date,City A,City B\n2023-01-01,0,0\n";
-  const blob = new Blob([csv], {type: 'text/csv'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'template_prices.csv';
-  a.click();
-}
-function downloadTemplateExcel() {
-  // buat placeholder: arahkan ke template di server jika ada. Untuk demo, fallback ke CSV:
-  downloadTemplateCSV();
-}
+// function downloadTemplateCSV() {
+//   const csv = "date,City A,City B\n2023-01-01,0,0\n";
+//   const blob = new Blob([csv], {type: 'text/csv'});
+//   const a = document.createElement('a');
+//   a.href = URL.createObjectURL(blob);
+//   a.download = 'template_prices.csv';
+//   a.click();
+// }
+// function downloadTemplateExcel() {
+//   // buat placeholder: arahkan ke template di server jika ada. Untuk demo, fallback ke CSV:
+//   downloadTemplateCSV();
+// }
 
 document.addEventListener('DOMContentLoaded', () => {
   const nav = document.querySelector('.top-nav') || document.querySelector('nav');

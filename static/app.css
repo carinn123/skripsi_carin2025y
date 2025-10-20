@@ -1390,3 +1390,87 @@ html { scroll-padding-top: 84px; } /* sesuaikan jika perlu */
   vertical-align: middle;
 }
 .btn-download-report:hover { opacity: .95; transform: translateY(-1px); }
+/* PAGINATION - stronger rules (place after main stylesheet) */
+#rc_table_pager {
+  display:flex;
+  align-items:center;
+  gap:0.5rem;
+  flex-wrap:wrap;
+  padding: 0.4rem 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  font-size: 0.95rem;
+  color: #334155;
+}
+
+/* apply to specific pager buttons (by class OR fallback to button inside pager) */
+#rc_table_pager .pager-btn,
+#rc_table_pager button {
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(15,23,42,0.02);
+  transition: background .12s ease, transform .06s ease, box-shadow .12s ease;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* hover */
+#rc_table_pager .pager-btn:hover,
+#rc_table_pager button:hover {
+  background: #f8fafc;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(15,23,42,0.06);
+}
+
+/* Next primary */
+#rc_table_pager .pager-btn.primary,
+#rc_table_pager button.primary {
+  background: linear-gradient(180deg,#2563eb,#1d4ed8);
+  border-color: rgba(0,0,0,0.06);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(37,99,235,0.12);
+}
+
+/* disabled look */
+#rc_table_pager .pager-btn[disabled],
+#rc_table_pager button[disabled],
+#rc_table_pager .pager-btn.disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* info text */
+#rc_table_pager span.pager-info {
+  color: #475569;
+  font-weight: 500;
+}
+
+/* goto input + button */
+#rc_table_pager .pager-input,
+#rc_table_pager input.pager-input {
+  width: 3.2rem;
+  padding: 0.28rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid #e6edf3;
+  outline: none;
+  font-weight:600;
+}
+#rc_table_pager .pager-input:focus,
+#rc_table_pager input.pager-input:focus {
+  box-shadow: 0 4px 12px rgba(59,130,246,0.08);
+  border-color: #60a5fa;
+}
+
+/* responsive compact */
+@media (max-width:600px){
+  #rc_table_pager { gap:0.35rem; font-size:0.85rem; }
+  #rc_table_pager .pager-btn { padding: 0.28rem 0.45rem; border-radius:6px; }
+  #rc_table_pager .pager-input { width:2.8rem; }
+}
