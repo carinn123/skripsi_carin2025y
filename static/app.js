@@ -7,9 +7,6 @@ function _safeSetText(id, txt) {
 async function populateQuickSelect(){ /* ... */ }
 async function quickPredictFetchAndRender(entity, opts){ /* ... */ }
 
-// --- lainnya, fungsi render/chart, dll ---
-
-// --- akhirnya: hook DOM ready ---
 document.addEventListener('DOMContentLoaded', () => {
   populateQuickSelect();
   const sel = document.getElementById('quick_kabupaten');
@@ -46,8 +43,6 @@ const fmtNum = (x, dec=0) =>
   (x==null || Number.isNaN(x)) ? '-' :
   new Intl.NumberFormat('id-ID', { maximumFractionDigits: dec, minimumFractionDigits: dec }).format(x);
 
-
-// --- replace existing fetchJsonSafe with this robust helper ---
 async function fetchJsonSafe(url, opts = {}) {
   // opts passed directly to fetch (method, body, headers, ...)
   let res;
@@ -132,8 +127,6 @@ async function fetchJsonSafe(url, opts = {}) {
     isFile  // boolean
   };
 }
-
-
 function goToDetailPrediksi() {
   // Pindah ke tab "Prediksi" saja tanpa set apa pun
   const predNav = document.querySelector('.nav-link[data-section="prediksi"]');
@@ -151,7 +144,6 @@ function goToDetailPrediksi() {
     }
   }, 200);
 }
-
 function fillSelect(selectId,records){
   const sel=document.getElementById(selectId); if(!sel) return;
   const firstOption = sel.querySelector('option[value=""]');
@@ -190,7 +182,6 @@ function selectedSlugOrLabel(selectEl){
   const opt = selectEl.options[selectEl.selectedIndex];
   return (opt?.dataset?.slug || opt?.dataset?.label || opt?.value || "").trim().toLowerCase();
 }
-
 async function initCities(){
   const targetIds = ['kabupaten','kabupaten2','kabupaten_a','ev_city']
     .filter(id => document.getElementById(id));
@@ -213,8 +204,6 @@ async function initCities(){
   }
   wireSearch(); // search hanya untuk #kabupaten
 }
-
-// ===== Islands (Beranda)
 (async function initIslands(){
   try{
     const res=await fetch('/api/islands'); 
@@ -227,7 +216,6 @@ async function initCities(){
   }catch(e){ console.error(e); }
 })();
 
-// Enable minggu (global + beranda)
 const bulanSel=document.getElementById('bulan');
 const mingguSel=document.getElementById('minggu');
 bulanSel?.addEventListener('change',()=>{
@@ -255,19 +243,146 @@ function normProv(s){
   return s.trim();
 }
 let __PROV_GJ=null;
-async function getProvGeoJSON(){ 
-  if(__PROV_GJ) return __PROV_GJ; 
-  const r=await fetch('/static/indonesia_provinces.geojson?v=1',{cache:'no-store'}); 
-  if(!r.ok) throw new Error('GeoJSON provinsi tidak ditemukan'); 
-  __PROV_GJ=await r.json(); 
-  return __PROV_GJ; 
+
+let MAP_INSTANCE = null;
+let GEOJSON_CACHE = null;
+let geoLayer = null;
+
+function ensureMap(){
+  if(MAP_INSTANCE) return MAP_INSTANCE;
+  MAP_INSTANCE = L.map('map', { preferCanvas: true }).setView([-2.5, 118], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM contributors' }).addTo(MAP_INSTANCE);
+  return MAP_INSTANCE;
 }
-let map,geoLayer;
-function ensureMap(){ 
-  if(map) return map; 
-  map=L.map('map',{scrollWheelZoom:true}).setView([-2.5,118],5); 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:10, attribution:'&copy; OpenStreetMap'}).addTo(map); 
-  return map; 
+async function getProvGeoJSON(){
+  if(GEOJSON_CACHE) return GEOJSON_CACHE;
+  const url = '/static/indonesia_provinces.geojson'; // <- gunakan file yang kamu punya
+  try {
+    const res = await fetch(url, {cache:'no-store'});
+    if(!res.ok){
+      console.warn('getProvGeoJSON: failed to load', url, res.status);
+      GEOJSON_CACHE = { type: "FeatureCollection", features: [] };
+      return GEOJSON_CACHE;
+    }
+    GEOJSON_CACHE = await res.json();
+    return GEOJSON_CACHE;
+  } catch (e) {
+    console.error('getProvGeoJSON error', e);
+    GEOJSON_CACHE = { type: "FeatureCollection", features: [] };
+    return GEOJSON_CACHE;
+  }
+}
+
+let KABKOTA_CACHE = null;
+async function getKabkotaPoints(){
+  if(KABKOTA_CACHE) return KABKOTA_CACHE;
+  const url = '/static/kabkota_points.geojson';
+  try {
+    const res = await fetch(url, {cache:'no-store'});
+    if(!res.ok){ console.warn('getKabkotaPoints failed', res.status); KABKOTA_CACHE = null; return null; }
+    KABKOTA_CACHE = await res.json();
+    return KABKOTA_CACHE;
+  } catch (e) { console.error('getKabkotaPoints error', e); KABKOTA_CACHE = null; return null; }
+}
+
+function setTableHeader(){
+  const thead = document.getElementById('rc_table_head') || document.querySelector('#rc_table thead');
+  if(!thead) return;
+  thead.innerHTML = `<tr>
+    <th style="width:56px">No</th>
+    <th>Kabupaten/Kota</th>
+    <th>Provinsi</th>
+    <th>Pulau</th>
+    <th class="num">Harga Terendah</th>
+    <th class="num">Tanggal Terendah</th>
+    <th class="num">Harga Tertinggi</th>
+    <th class="num">Tanggal Tertinggi</th>
+  </tr>`;
+}
+
+function populateFilterDropdownsFromRows(rows){
+  const provSel = document.getElementById('rc_filter_province');
+  const islSel = document.getElementById('rc_filter_island');
+  if(!provSel || !islSel) return;
+  const provSet = new Set(), islSet = new Set();
+  rows.forEach(r => { if(r.province) provSet.add(String(r.province).trim()); if(r.island) islSet.add(String(r.island).trim()); });
+  function fill(sel, arr, placeholder){
+    sel.innerHTML = '';
+    const ph = document.createElement('option'); ph.value=''; ph.textContent = placeholder; sel.appendChild(ph);
+    arr.sort().forEach(v=>{ const o = document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+  }
+  fill(provSel, Array.from(provSet), '— Semua Provinsi —');
+  fill(islSel, Array.from(islSet), '— Semua Pulau —');
+}
+
+function applyTableFilters(){
+  const q = (document.getElementById('rc_filter_text')?.value || '').trim().toLowerCase();
+  const prov = (document.getElementById('rc_filter_province')?.value || '').trim().toLowerCase();
+  const isl = (document.getElementById('rc_filter_island')?.value || '').trim().toLowerCase();
+  const rows = document.querySelectorAll('#rc_table tbody tr');
+  rows.forEach(tr=>{
+    const city = (tr.dataset.city || '').toLowerCase();
+    const p = (tr.dataset.prov || '').toLowerCase();
+    const i = (tr.dataset.island || '').toLowerCase();
+    let visible = true;
+    if(q) visible = visible && (city.includes(q) || p.includes(q) || i.includes(q));
+    if(prov) visible = visible && (p === prov);
+    if(isl) visible = visible && (i === isl);
+    tr.style.display = visible ? '' : 'none';
+  });
+  const shownEl = document.getElementById('rc_table_shown_count');
+  if(shownEl) shownEl.textContent = Array.from(document.querySelectorAll('#rc_table tbody tr')).filter(r=> r.style.display !== 'none').length;
+}
+
+function attachTableFilters(){
+  const q = document.getElementById('rc_filter_text');
+  const prov = document.getElementById('rc_filter_province');
+  const isl = document.getElementById('rc_filter_island');
+  const clear = document.getElementById('rc_filter_clear');
+  if(q) q.addEventListener('input', applyTableFilters);
+  if(prov) prov.addEventListener('change', applyTableFilters);
+  if(isl) isl.addEventListener('change', applyTableFilters);
+  if(clear) clear.addEventListener('click', ()=>{
+    if(q) q.value = '';
+    if(prov) prov.value = '';
+    if(isl) isl.value = '';
+    applyTableFilters();
+  });
+}
+
+function fillRegionTable(rows){
+  setTableHeader();
+  const tbody = document.querySelector('#rc_table tbody');
+  if(!tbody) return;
+  if(!rows || !Array.isArray(rows) || rows.length === 0){
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
+    document.getElementById('rc_table_shown_count').textContent = 0;
+    return;
+  }
+  let html = '';
+  rows.forEach((r, idx) => {
+    const city = r.city || r.entity || '';
+    const province = r.province || '';
+    const island = r.island || '';
+    const min_value = (r.min != null) ? rupiah(Math.round(r.min)) : '—';
+    const max_value = (r.max != null) ? rupiah(Math.round(r.max)) : '—';
+    const min_date = r.min_date || r.min_date || '—';
+    const max_date = r.max_date || r.max_date || '—';
+    html += `<tr data-city="${escapeHtml(city).toLowerCase()}" data-prov="${escapeHtml(province).toLowerCase()}" data-island="${escapeHtml(island).toLowerCase()}">
+      <td>${idx+1}</td>
+      <td>${escapeHtml(city)}</td>
+      <td>${escapeHtml(province)}</td>
+      <td>${escapeHtml(island)}</td>
+      <td class="num">${min_value}</td>
+      <td class="num">${min_date}</td>
+      <td class="num">${max_value}</td>
+      <td class="num">${max_date}</td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
+  document.getElementById('rc_table_shown_count').textContent = rows.length;
+  populateFilterDropdownsFromRows(rows);
+  applyTableFilters();
 }
 
 function showMapValidation(msg){
@@ -281,9 +396,6 @@ function hideMapValidation(){
   if(!el) return;
   el.style.display = 'none';
 }
-
-
-// small helper to avoid XSS
 function escapeHtml(s){
   if(!s && s !== 0) return '';
   return String(s).replace(/[&<>"']/g, (m)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -408,30 +520,27 @@ function fillRegionTable(rows){
     const city = r.city ?? r.name ?? r.entity ?? '';
     const province = r.province ?? '';
     const island = r.island ?? '';
-    const min_value = (r.min_value != null) ? rupiah(Math.round(r.min_value)) : '—';
-    const max_value = (r.max_value != null) ? rupiah(Math.round(r.max_value)) : '—';
-    const avg_high = (r.avg_month_high != null) ? rupiah(Math.round(r.avg_month_high)) : '—';
-    const highPeriod = (r.avg_month_high_month && r.avg_month_high_year) ? `${r.avg_month_high_month}/${r.avg_month_high_year}` :
-                       (r.avg_month_high_month ? `${r.avg_month_high_month}` : '—');
-    const lowPeriod = (r.avg_month_low_month && r.avg_month_low_year) ? `${r.avg_month_low_month}/${r.avg_month_low_year}` :
-                      (r.avg_month_low_month ? `${r.avg_month_low_month}` : '—');
+    const min_value = (r.min != null) ? rupiah(Math.round(Number(r.min))) : '—';
+    const max_value = (r.max != null) ? rupiah(Math.round(Number(r.max))) : '—';
+    const min_date = r.min_date ?? '—';
+    const max_date = r.max_date ?? '—';
+    const mean_value = (r.mean != null) ? rupiah(Math.round(Number(r.mean))) : '—';
+    const ref_mean_value = (r.ref_mean != null) ? rupiah(Math.round(Number(r.ref_mean))) : '—';
 
     const no = r.no ?? ( (window.__LAST_RC_META && window.__LAST_RC_META.page && window.__LAST_RC_META.page_size) 
                         ? ((window.__LAST_RC_META.page - 1) * window.__LAST_RC_META.page_size + idx + 1) : idx + 1);
 
-    html += `<tr>
+    html += `<tr data-city="${escapeHtml(city).toLowerCase()}" data-prov="${escapeHtml(province).toLowerCase()}" data-island="${escapeHtml(island).toLowerCase()}">
       <td>${no}</td>
       <td>${escapeHtml(city)}</td>
       <td>${escapeHtml(province)}</td>
       <td>${escapeHtml(island)}</td>
       <td class="num">${min_value}</td>
-      <td class="num">${r.min_date ?? '—'}</td>
+      <td class="num">${min_date}</td>
       <td class="num">${max_value}</td>
-      <td class="num">${r.max_date ?? '—'}</td>
-      <td class="num">${avg_high}</td>
-      <td class="num">${highPeriod}</td>
-      <td class="num">${(r.avg_month_low!=null)? rupiah(Math.round(r.avg_month_low)) : '—'}</td>
-      <td class="num">${lowPeriod}</td>
+      <td class="num">${max_date}</td>
+      <td class="num">${mean_value}</td>
+      <td class="num">${ref_mean_value}</td>
     </tr>`;
   });
 
@@ -447,25 +556,42 @@ function fillRegionTable(rows){
     if(shownEl) shownEl.textContent = rows.length;
     if(totalEl) totalEl.textContent = rows.length;
   }
+
+  // repopulate filter dropdowns and apply filters
+  populateFilterDropdownsFromRows(rows);
+  applyTableFilters();
 }
 
 
+function normalizeProvName(s){
+  if(!s && s !== 0) return '';
+  let t = String(s).trim();
+  t = t.replace(/\b(KAB\.?|KOTA\.?|KABUPATEN|KOTA)\b/ig, '').replace(/[.]/g,'').replace(/\s+/g,' ').trim();
+  return t.toLowerCase();
+}
+
 async function showMapBeranda(event){
   const islandInput = document.getElementById('pulau');
-  const island = islandInput ? islandInput.value.trim() : '';
+  // allow empty island to mean "Semua Pulau"
+  let island = islandInput ? islandInput.value.trim() : '';
+  if(!island) island = 'Semua Pulau';
+
   const tahun = document.getElementById('b_tahun').value;
   const bulan = document.getElementById('b_bulan').value;
   const minggu = document.getElementById('b_minggu').value;
   const loading = document.getElementById('b_loading');
-
-  // NEW: mode (actual | predicted)
   const mode = (document.getElementById('b_mode') && document.getElementById('b_mode').value) || 'actual';
 
-  // validasi dasar
-  if(!island){
-    showMapValidation('Pilih Pulau terlebih dahulu.');
-    return;
+  // read bucket_scope UI (#b_scope), fallback auto:
+  let bucket_scope = 'national';
+  const scopeEl = document.getElementById('b_scope');
+  if(scopeEl && scopeEl.value){
+    bucket_scope = scopeEl.value;
+  } else {
+    bucket_scope = (island && island !== 'Semua Pulau') ? 'island' : 'national';
   }
+
+  // basic validation: require tahun, but NOT pulau (we accept "Semua Pulau")
   if(!tahun){
     showMapValidation('Pilih Tahun terlebih dahulu.');
     return;
@@ -479,85 +605,151 @@ async function showMapBeranda(event){
   loading.style.display='inline-block';
 
   try{
-    const url = `/api/choropleth?island=${encodeURIComponent(island)}&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}&mode=${encodeURIComponent(mode)}`;
-    const res = await fetch(url, {cache:'no-store'});
-    const js = await res.json().catch(()=>({}));
-    if(!res.ok) throw new Error(js.error || ('HTTP '+res.status));
+    // include_table=1 so server will attempt to return per-city table for the same filters
+    const url = `/api/choropleth?island=${encodeURIComponent(island)}&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}&mode=${encodeURIComponent(mode)}&bucket_scope=${encodeURIComponent(bucket_scope)}&include_table=1`;
+
+    const res = await fetch(url, { cache: 'no-store' });
+
+    // robust read + parse with helpful logs
+    const raw = await res.text();
+    console.groupCollapsed('choropleth fetch debug');
+    console.log('requested URL:', url);
+    console.log('HTTP status:', res.status, res.statusText);
+    console.log('raw response length:', raw ? raw.length : 0);
+    console.log('raw response (first 1200 chars):', raw ? raw.slice(0,1200) : '');
+    console.groupEnd();
+
+    let js;
+    try {
+      js = raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      console.error('[choropleth] JSON parse failed', err);
+      showMapValidation('Gagal membaca response dari server (invalid JSON). Periksa console/server log.');
+      fillRegionTable([]);
+      if (window.geoLayer) try { window.geoLayer.remove(); } catch(_) {}
+      throw err;
+    }
+
+    if (!res.ok) {
+      const errMsg = (js && js.error) ? js.error : `HTTP ${res.status}`;
+      console.error('choropleth returned error status', res.status, js);
+      showMapValidation(`Server error: ${errMsg}`);
+      fillRegionTable([]);
+      throw new Error(errMsg);
+    }
+
+    console.groupCollapsed('choropleth parsed debug');
+    console.log('parsed keys:', js && Object.keys(js));
+    console.log('data len:', Array.isArray(js && js.data) ? js.data.length : js && js.data);
+    console.log('table len:', Array.isArray(js && js.table) ? js.table.length : js && js.table);
+    console.groupEnd();
+
+    if(!js || (typeof js === 'object' && Object.keys(js).length === 0)){
+      console.warn('choropleth: parsed payload empty, aborting');
+      showMapValidation('Server mengembalikan payload kosong untuk filter ini.');
+      fillRegionTable([]);
+      return;
+    }
 
     const m = ensureMap();
     const gj = await getProvGeoJSON();
 
-    // buat mapping provinsi -> nilai
-    const vmap = Object.fromEntries((js.data||[]).map(d=>[
-      normProv(d.province),
-      { val:d.value, cat:d.category, label:d.province }
-    ]));
+    // build vmap for choropleth painting
+    const vmap = Object.fromEntries((js.data||[]).map(d=>[normProv(d.province), { val:d.value, cat:d.category, label:d.province, n_cities: d.n_cities || d.n_kota || 0 }]));
 
-    if(geoLayer) geoLayer.remove();
-    geoLayer = L.geoJSON(gj, {
+    if(window.geoLayer) window.geoLayer.remove();
+    window.geoLayer = L.geoJSON(gj, {
       style: f => {
-        const raw = f.properties.Propinsi || f.properties.PROVINSI || f.properties.provinsi || f.properties.name || f.properties.NAMOBJ || "";
-        const rec = vmap[normProv(raw)];
-        const fill = rec
-          ? (rec.cat==='low' ? '#2ecc71' : rec.cat==='mid' ? '#f1c40f' : '#e74c3c')
-          : '#bdc3c7';
+        const rawn = f.properties.Propinsi || f.properties.PROVINSI || f.properties.provinsi || f.properties.name || f.properties.NAMOBJ || "";
+        const rec = vmap[normProv(rawn)];
+        const fill = rec ? (rec.cat==='low' ? '#2ecc71' : rec.cat==='mid' ? '#f1c40f' : '#e74c3c') : '#bdc3c7';
         return { color:'#fff', weight:1, fillColor:fill, fillOpacity:.85 };
       },
       onEachFeature: (feature, layer) => {
-        const raw = feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "—";
-        const rec = vmap[normProv(raw)];
-        const val = rec ? Math.round(rec.val) : null;
-        const cat = rec ? rec.cat : 'no-data';
-
+        const rawn = feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "—";
+        const rec = vmap[normProv(rawn)];
+        const valueRaw = rec ? (('val' in rec) ? rec.val : (rec.value ?? null)) : null;
+        const val = (valueRaw == null) ? null : Math.round(Number(valueRaw));
+        const cat = rec ? (rec.cat || rec.category || 'no-data') : 'no-data';
         let meta = '';
-        if(js.mode === 'predicted' || js.generated_at || js.model_version){
+        if (js.mode === 'predicted' || js.generated_at || js.model_version) {
           const gen = js.generated_at ? `Generated: ${js.generated_at}` : '';
-          const mv = js.model_version ? `Model: ${js.model_version}` : '';
-          meta = `<br/><small style="color:#6b7280">${[gen,mv].filter(Boolean).join(' • ')}</small>`;
+          const mv  = js.model_version ? `Model: ${js.model_version}` : '';
+          meta = `<br/><small style="color:#6b7280">${[gen, mv].filter(Boolean).join(' • ')}</small>`;
         }
+        const nCitiesInfo = rec && rec.n_cities ? `<br/><small>Jumlah kota: ${rec.n_cities}</small>` : '';
+        layer.bindPopup(`<b>${rawn}</b><br/>${val ? ('Rp '+rupiah(val)) : '—'}<br/>Kategori: ${escapeHtml(cat)}${nCitiesInfo}${meta}`);
 
-        layer.bindPopup(`<b>${raw}</b><br/>${val ? ('Rp '+rupiah(val)) : '—'}<br/>Kategori: ${cat}${meta}`);
-        if (!layer._provClickTimer) layer._provClickTimer = null;
-          layer.on('click', function(e){
-            const provName = (feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "").trim();
-            if(!provName) return;
-            if(layer._provClickTimer) clearTimeout(layer._provClickTimer);
-            layer._provClickTimer = setTimeout(()=>{
-              // non-blocking call to load table for this province
-              if(typeof loadRegionSummaryForProvince === 'function'){
-                loadRegionSummaryForProvince(provName).catch(err => console.error('loadRegionSummaryForProvince', err));
-              } else {
-                console.warn('loadRegionSummaryForProvince not defined');
-              }
-              layer._provClickTimer = null;
-            }, 300);
-          });
-        // use a distinct variable name and a tiny debounce to avoid spam
-        let _provClickTimer = null;
         layer.on('click', function(e){
           const provName = (feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "").trim();
           if(!provName) return;
-          // debounce 300ms to avoid double-click storms
-          if(_provClickTimer) clearTimeout(_provClickTimer);
-          _provClickTimer = setTimeout(()=>{
-            // call loader for province (implementasi di bawah)
-            loadRegionSummaryForProvince(provName);
-            _provClickTimer = null;
-          }, 300);
-});
+          if(typeof loadRegionSummaryForProvince === 'function'){
+            loadRegionSummaryForProvince(provName).catch(err => console.error('loadRegionSummaryForProvince', err));
+          }
+        });
       }
     }).addTo(m);
 
-    try { m.fitBounds(geoLayer.getBounds(), {padding:[20,20]}); } catch(e){}
+    try { m.fitBounds(window.geoLayer.getBounds(), {padding:[20,20]}); } catch(e){}
 
-    // === 🔥 trigger tabel eksplor kab/kota ===
-    loadRegionSummaryFromMap(island).catch(err => {
-      console.error('loadRegionSummaryFromMap failed', err);
-    });
+    // === TABLE: map server table rows to expected fillRegionTable format
+    // If server didn't include ref_mean, compute fallback on client
+    let tableRows = [];
+    if(js.table && Array.isArray(js.table) && js.table.length){
+      tableRows = js.table.map((r, idx) => ({
+        city: r.city || r.entity || '',
+        province: r.province || '',
+        island: r.island || '',
+        min: (r.min != null) ? Number(r.min) : (r.min_value != null ? Number(r.min_value) : null),
+        min_date: r.min_date || r.min_date || '—',
+        max: (r.max != null) ? Number(r.max) : (r.max_value != null ? Number(r.max_value) : null),
+        max_date: r.max_date || r.max_date || '—',
+        mean: (r.mean != null) ? Number(r.mean) : (r.mean_value != null ? Number(r.mean_value) : null),
+        ref_mean: (r.ref_mean != null) ? Number(r.ref_mean) : null,
+        idx: idx+1
+      }));
+
+      // compute fallback ref_mean if missing:
+      const needCompute = tableRows.some(tr => tr.ref_mean == null);
+      if(needCompute){
+        // group by island to compute island-wise mean of city means
+        const byIsland = {};
+        tableRows.forEach(tr => {
+          const isl = (tr.island || '').toString();
+          if(!byIsland[isl]) byIsland[isl] = [];
+          if(tr.mean != null) byIsland[isl].push(tr.mean);
+        });
+        const islandMean = {};
+        for(const k of Object.keys(byIsland)){
+          const vals = byIsland[k];
+          islandMean[k] = (vals && vals.length) ? (vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+        }
+        // national mean:
+        const allMeans = tableRows.map(t=>t.mean).filter(v=>v!=null);
+        const nationalMean = (allMeans.length) ? (allMeans.reduce((a,b)=>a+b,0)/allMeans.length) : null;
+
+        tableRows = tableRows.map(tr => {
+          if(tr.ref_mean != null) return tr;
+          if(bucket_scope === 'island'){
+            const candidate = islandMean[(tr.island||'').toString()] ?? null;
+            tr.ref_mean = candidate;
+          } else {
+            tr.ref_mean = nationalMean;
+          }
+          return tr;
+        });
+      }
+    }
+
+    if(tableRows.length > 300){
+      showMapValidation(`Menampilkan ${tableRows.length} baris untuk "Semua Pulau" — mungkin butuh beberapa detik untuk render.` );
+      setTimeout(hideMapValidation, 4000);
+    }
+
+    fillRegionTable(tableRows);
 
     // === update informasi statistik ===
     document.getElementById('statPulau').textContent = island || 'Semua Pulau';
-
     let scope = `Tahun ${tahun}`;
     if(bulan) scope = `Bulan ${monthsID[+bulan]} ${tahun}`;
     if(bulan && minggu) scope = `Minggu ke-${minggu}, ${monthsID[+bulan]} ${tahun}`;
@@ -567,8 +759,7 @@ async function showMapBeranda(event){
       try{
         const d = new Date(js.generated_at);
         const opt = { year:'numeric', month:'short', day:'numeric' };
-        document.getElementById('statLast').textContent = 
-          `Predicted: ${d.toLocaleDateString('id-ID', opt)}`;
+        document.getElementById('statLast').textContent = `Predicted: ${d.toLocaleDateString('id-ID', opt)}`;
       }catch(e){
         document.getElementById('statLast').textContent = `Predicted: ${js.generated_at.split('T')[0]}`;
       }
@@ -578,13 +769,28 @@ async function showMapBeranda(event){
 
   }catch(e){
     console.error(e);
-    alert('Gagal menampilkan peta: '+(e.message||e));
+    alert('Gagal menampilkan peta & tabel: '+(e.message||e));
+    fillRegionTable([]);
   }finally{
     loading.style.display='none';
   }
 }
-
 window.showMapBeranda = showMapBeranda;
+
+/* ---------- init wiring (filters) ---------- */
+document.addEventListener('DOMContentLoaded', ()=>{
+  setTableHeader();
+  attachTableFilters();
+  const btn = document.getElementById('btn_show_map');
+  if(btn) btn.addEventListener('click', showMapBeranda);
+
+  // enable/disable minggu based on bulan
+  const bulan = document.getElementById('b_bulan');
+  const minggu = document.getElementById('b_minggu');
+  if(bulan && minggu){
+    bulan.addEventListener('change', ()=> { if(bulan.value) minggu.disabled = false; else { minggu.value=''; minggu.disabled=true; } });
+  }
+});
 
 async function fetchJsonWithRetry(url, tries = 2) {
   for (let i = 0; i < tries; i++) {
@@ -703,12 +909,20 @@ async function loadRegionSummaryForProvince(prov, page = 1){
     const req_page_size = 25;
     const url = `/api/region_summary?mode=province&value=${encodeURIComponent(prov)}&page=${page}&page_size=${req_page_size}`;
     console.log('fetch region_summary province', url);
-    const res = await fetch(url, {cache:'no-store'});
-    const js = await res.json().catch(()=>({}));
-    console.log('region_summary(province) response', res.status, js);
 
-    if(!res.ok){
-      console.error('region_summary (province) error', js);
+    // => replaced fetch(...) with fetchJsonWithRetry(...)
+    const js = await fetchJsonWithRetry(url);
+    if (!js) {
+      console.warn('fetchJsonWithRetry returned null for', url);
+      fillRegionTable([]);
+      renderPager({count:0,page:1,page_size:req_page_size}, ()=>{});
+      return;
+    }
+    console.log('region_summary(province) response (parsed)', js);
+
+    // if backend returns an explicit error structure, handle it
+    if (js && js.error) {
+      console.error('region_summary (province) error from server', js.error);
       fillRegionTable([]);
       renderPager({count:0,page:1,page_size:req_page_size}, ()=>{});
       return;
@@ -734,6 +948,8 @@ async function loadRegionSummaryForProvince(prov, page = 1){
     if(loader) loader.style.display = 'none';
   }
 }
+
+
 const bmode = document.getElementById('b_mode');
 if(bmode){
   bmode.addEventListener('change', function(){
@@ -2149,50 +2365,6 @@ function fmtID(x, dec=0){
   return new Intl.NumberFormat('id-ID', {maximumFractionDigits: dec, minimumFractionDigits: dec}).format(x);
 }
 
-async function loadTopN(){
-  const tahun = document.getElementById('b_top_tahun')?.value || '';
-  const order = document.getElementById('b_top_order')?.value || 'desc';
-  const limit = document.getElementById('b_top_limit')?.value || '5';
-  const spinner = document.getElementById('top5_loading');
-  const tbody = document.querySelector('#top5Table tbody');
-  if (!tbody) return;
-
-  if (!tahun){
-    alert('Pilih tahun dulu.'); 
-    return;
-  }
-
-  spinner && (spinner.style.display = 'inline-block');
-  try{
-    const url = `/api/top_cities?year=${encodeURIComponent(tahun)}&order=${encodeURIComponent(order)}&limit=${encodeURIComponent(limit)}`;
-    const res = await fetch(url, {cache:'no-store'});
-    const js  = await res.json();
-    if (!res.ok) throw new Error(js.error || 'Server error');
-
-    // render table
-    const rows = js.data || [];
-    if (!rows.length){
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--muted)">Tidak ada data untuk tahun ${tahun}.</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = rows.map(r => `
-      <tr>
-        <td style="text-align:center">${r.rank ?? ''}</td>
-        <td>${r.city || '-'}</td>
-        <td>${r.province || '-'}</td>
-        <td style="text-align:right">Rp ${fmtID(r.avg,0)}</td>
-        <td style="text-align:right">${r.min==null?'-':('Rp '+fmtID(r.min,0))}</td>
-        <td style="text-align:right">${r.max==null?'-':('Rp '+fmtID(r.max,0))}</td>
-        <td style="text-align:right">${r.n==null?'-':fmtID(r.n,0)}</td>
-      </tr>
-    `).join('');
-  }catch(e){
-    console.error(e);
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#b00020">Gagal memuat: ${e.message}</td></tr>`;
-  }finally{
-    spinner && (spinner.style.display = 'none');
-  }
-}
 
 // sinkron default tahun (opsional) & bind tombol
 document.addEventListener('DOMContentLoaded', ()=>{
@@ -2203,13 +2375,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }
   document.getElementById('btnTop5')?.addEventListener('click', loadTopN);
 });
-
-
-
-
-
-
-
 
 // ================= Regional Correlation (Pulau/Provinsi) =================
 document.addEventListener('DOMContentLoaded', () => {
@@ -2223,8 +2388,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!rcModeSel || !rcValueSel) return;
 
   // util kecil
-  
-  const MONTHS_ID_SHORT = ["","Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+
   const fmtIDnum = (x, dec = 0) =>
     (x == null || Number.isNaN(x))
       ? '-'
@@ -2250,8 +2414,6 @@ document.addEventListener('DOMContentLoaded', () => {
     try { return new Date(iso+"T00:00:00").toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}); }
     catch { return iso; }
   };
-  
-
 
   async function loadIslandsList() {
     try {
@@ -2294,31 +2456,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // log kecil biar kelihatan
     console.log('[RC] filled', mode, '=>', rcValueSel.options.length, 'opsi');
   }
-// Helper: render region table rows
 
-
-
-  // async function runRegional() {
-  //   const mode  = rcModeSel.value || 'island';
-  //   const value = rcValueSel.value || '';
-  //   if (!value) { alert('Pilih nilai pada dropdown kedua.'); return; }
-  //   showSpin(true);
-  //   try {
-  //     const js = await fetchRegionSummary(mode, value);
-  //     renderRegionRows(js.rows || []);
-  //   } catch (e) {
-  //     console.error(e);
-  //     rcRenderEmpty(`Gagal memuat: ${e.message}`);
-  //   } finally {
-  //     showSpin(false);
-  //   }
-  // }
-
-  // wiring
-  // rcModeSel.addEventListener('change', fillRcValueOptions);
-  // rcBtn && rcBtn.addEventListener('click', runRegional);
-
-  // init pertama kali (pasti dipanggil setelah DOM siap)
   fillRcValueOptions();
 });
 
@@ -2883,19 +3021,6 @@ function renderResults(payload){
 
 
 
-// function downloadTemplateCSV() {
-//   const csv = "date,City A,City B\n2023-01-01,0,0\n";
-//   const blob = new Blob([csv], {type: 'text/csv'});
-//   const a = document.createElement('a');
-//   a.href = URL.createObjectURL(blob);
-//   a.download = 'template_prices.csv';
-//   a.click();
-// }
-// function downloadTemplateExcel() {
-//   // buat placeholder: arahkan ke template di server jika ada. Untuk demo, fallback ke CSV:
-//   downloadTemplateCSV();
-// }
-
 document.addEventListener('DOMContentLoaded', () => {
   const nav = document.querySelector('.top-nav') || document.querySelector('nav');
   if (!nav) return;
@@ -2964,16 +3089,54 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ====== SCROLL TO BERANDA FIX (universal, works meskipun 1 file) ======
+// Pastikan ini dijalankan setelah DOM siap (file Anda sudah memuat script dengan defer)
 document.addEventListener('click', (e) => {
+  // existing scroll-to-beranda handler (biarkan tetap)
   const btn = e.target.closest('#scroll-to-beranda');
-  if (!btn) return;
-  e.preventDefault();
+  if (btn) {
+    e.preventDefault();
+    console.log('[scroll-to-beranda] clicked!');
+    document.body.classList.add('hero-collapsed');
+    document.querySelector('.nav-link[data-section="beranda"]')?.click();
+    document.getElementById('beranda')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try { history.replaceState(null, '', '#beranda'); } catch (_) {}
+    return;
+  }
 
-  console.log('[scroll-to-beranda] clicked!');
+  // BRAND -> kembali ke COVER
+  const brand = e.target.closest('#brand-link');
+  if (brand) {
+    e.preventDefault();
+    console.log('[brand-link] clicked! kembali ke cover');
 
-  document.body.classList.add('hero-collapsed');
-  document.querySelector('.nav-link[data-section="beranda"]')?.click();
-  document.getElementById('beranda')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 1) tutup hamburger jika terbuka (checkbox nav-toggle)
+    const navToggle = document.getElementById('nav-toggle');
+    if (navToggle && navToggle.checked) {
+      navToggle.checked = false;
+    }
 
-  try { history.replaceState(null, '', '#beranda'); } catch (_) {}
+    // 2) kembalikan state cover (hilangkan collapsed)
+    document.body.classList.remove('hero-collapsed');
+
+    // 3) reset active nav (opsional: hilangkan semua active)
+    document.querySelectorAll('.top-nav .nav-link').forEach(link => link.classList.remove('active'));
+
+    // 4) scroll ke #cover (jika ada)
+    const coverEl = document.getElementById('cover');
+    if (coverEl) {
+      // beri sedikit delay jika ada animasi collapse yang perlu selesai
+      setTimeout(() => {
+        coverEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    } else {
+      // fallback ke top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 5) update url hash (opsional)
+    try { history.replaceState(null, '', '#cover'); } catch (_) {}
+
+    return;
+  }
 });
+

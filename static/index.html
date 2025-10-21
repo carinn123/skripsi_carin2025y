@@ -46,7 +46,7 @@
 <!-- ====== TOP BAR (pengganti sidebar) ====== -->
 <header class="topbar">
   <div class="wrap">
-    <div class="brand-inline">🛢️ PrediksiMinyak.id</div>
+<a href="#cover" id="brand-link" class="brand-inline" aria-label="Kembali ke cover">PrediksiMinyak.id</a>
 
     <!-- ===== ADD: hamburger (CSS-only) ===== -->
     <input id="nav-toggle" type="checkbox" class="nav-toggle" aria-hidden="true" style="display:none;">
@@ -57,11 +57,11 @@
     </label>
 
     <nav class="top-nav">
-      <a href="#" class="nav-link active" data-section="beranda">🏠 Beranda</a>
-      <a href="#" class="nav-link" data-section="tren">📈 Tinjauan Tren</a>
-      <a href="#" class="nav-link" data-section="prediksi">🔮 Prediksi</a>
-      <a href="#" class="nav-link" data-section="upload">🧪 Upload</a>
-      <a href="#" class="nav-link" data-section="tentang">ℹ️ Tentang</a>
+      <a href="#" class="nav-link active" data-section="beranda"> Beranda</a>
+      <a href="#" class="nav-link" data-section="tren"> Tinjauan Tren</a>
+      <a href="#" class="nav-link" data-section="prediksi"> Prediksi</a>
+      <a href="#" class="nav-link" data-section="upload"> Upload</a>
+      <a href="#" class="nav-link" data-section="tentang"> Tentang</a>
     </nav>
   </div>
 </header>
@@ -74,7 +74,7 @@
       <div class="content-section active" id="beranda">
         <h2 class="section-title">Selamat Datang di Sistem Prediksi Harga Minyak Goreng</h2>
        <div class="input-group">
-  <label for="quick_kabupaten">Pilih Kabupaten/Kota (Quick)</label>
+  <label for="quick_kabupaten">Pilih Kabupaten/Kota untuk diprediksi (Quick)</label>
   <select id="quick_kabupaten" onchange="loadQuickPredictionNoDate(this.value)">
     <option value="">-- Pilih --</option>
     <!-- gunakan slug yang server kenali jika memungkinkan -->
@@ -141,7 +141,7 @@
             <span style="font-size:1.2rem">→</span>
           </a>
         </div>
-
+        
       </div>
         <div class="input-section" id="beranda-filter">
           <div class="input-row">
@@ -152,6 +152,13 @@
               <option value="predicted">Predicted (Perkiraan)</option>
             </select>
           </div>
+          <div class="input-group">
+          <label for="b_scope">Rata-rata</label>
+          <select id="b_scope">
+            <option value="island">Per Pulau (kuartil per-pulau)</option>
+            <option value="national">Nasional (kuartil nasional)</option>
+          </select>
+        </div>
           <div class="input-group" id="horizon_group" style="display:none;">
           <label for="b_horizon">Horizon (hari)</label>
           <input id="b_horizon" type="number" min="1" max="90" value="7" style="width:6rem" />
@@ -198,32 +205,35 @@
           </div>
         </div>
           <!-- Validation message untuk map -->
-        <div id="mapValidation" class="field-validation" role="alert" aria-live="polite" style="display:none; margin-top:0.5rem;">
-          <small><strong style="color:#b45309">⚠️ Mohon isi Pulau dan Tahun terlebih dahulu.</strong></small>
-        </div>
+          <div id="mapValidation" class="field-validation" role="alert" aria-live="polite" style="display:none; margin-top:0.5rem;">
+            <small><strong style="color:#b45309">⚠️ Mohon isi Pulau dan Tahun terlebih dahulu.</strong></small>
+          </div>
 
 
-        <div class="info-box">
-          <h3>Tentang Sistem</h3>
-          <p>Sistem ini menggunakan <strong>Gradient Boosting</strong> untuk memprediksi harga minyak goreng berdasarkan data historis PIHPS. Di bawah ini adalah <strong>peta harga rata-rata per provinsi</strong> dengan kategori warna:
-            <span style="color:#2ecc71;font-weight:600;">Hijau</span> (Q1),
-            <span style="color:#f1c40f;font-weight:600;">Kuning</span> (Q2),
-            <span style="color:#e74c3c;font-weight:600;">Merah</span> (Q3).
-          </p>
-        </div>
+          <div class="info-box">
+            <h2>Peta Persebaran</h2>
+            <p>Sistem ini menggunakan <strong>Gradient Boosting</strong> untuk memprediksi harga minyak goreng berdasarkan data historis PIHPS. Di bawah ini adalah <strong>peta harga rata-rata per provinsi</strong> dengan kategori warna:
+              <span style="color:#2ecc71;font-weight:600;">Hijau</span> (Q1),
+              <span style="color:#f1c40f;font-weight:600;">Kuning</span> (Q2),
+              <span style="color:#e74c3c;font-weight:600;">Merah</span> (Q3).
+            </p>
+            <br>
+            <p>klasifikasi wilayah dilakukan berdasarkan pembagian kuartil menjadi tiga kategori, di mana wilayah dengan nilai di bawah kuartil pertama (Q1) ditandai dengan warna hijau, kuartil kedua (Q2) dengan warna kuning, dan kuartil ketiga (Q3) dengan warna merah.</p>
 
-        <div id="map"></div>
-        <div class="legend">
-          <span><i style="background:#2ecc71"></i> Q1</span>
-          <span><i style="background:#f1c40f"></i> Q2</span>
-          <span><i style="background:#e74c3c"></i> Q3</span>
-        </div>
+          </div>
 
-        <div class="stats-grid" style="margin-top:1rem">
-          <div class="stat-card"><div class="stat-value" id="statPulau">-</div><div class="stat-label">Pulau</div></div>
-          <div class="stat-card"><div class="stat-value" id="statScope">-</div><div class="stat-label">Periode</div></div>
-          <div class="stat-card"><div class="stat-value" id="statLast">-</div><div class="stat-label">Last Actual</div></div>
-        </div>
+          <div id="map"></div>
+          <div class="legend">
+            <span><i style="background:#2ecc71"></i> Q1</span>
+            <span><i style="background:#f1c40f"></i> Q2</span>
+            <span><i style="background:#e74c3c"></i> Q3</span>
+          </div>
+
+          <div class="stats-grid" style="margin-top:1rem">
+            <div class="stat-card"><div class="stat-value" id="statPulau">-</div><div class="stat-label">Pulau</div></div>
+            <div class="stat-card"><div class="stat-value" id="statScope">-</div><div class="stat-label">Periode</div></div>
+            <div class="stat-card"><div class="stat-value" id="statLast">-</div><div class="stat-label">Last Actual</div></div>
+          </div>
         <!-- ====== TOP 5 KAB/KOTA (BERANDA) ====== -->
         
         <section class="card-section" id="regional-correlation">

@@ -1,4 +1,5 @@
 # app.py
+from statistics import mode
 import os, json, warnings, re
 from pathlib import Path
 from datetime import datetime
@@ -12,6 +13,17 @@ import math
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit, TimeSeriesSplit
 from sklearn.ensemble import HistGradientBoostingRegressor as HGBR
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import math
+import time
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+
+import numpy as np
+
+import pandas as pd
+
 from io import StringIO
 from werkzeug.utils import secure_filename
 from pathlib import Path
@@ -25,6 +37,8 @@ import matplotlib.pyplot as plt
 import time
 import traceback
 
+import time
+import traceback
 
 
 # =======================
@@ -40,7 +54,7 @@ MODELS_DIR_PACKS = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "models")))
 
 ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
 CITY_COORDS_PATH = BASE_DIR / "static" / "city_coords.json"
-EVAL_XLSX = BASE_DIR / "models" / "training_summary_all_city.xlsx"
+EVAL_XLSX = BASE_DIR / "models" / "summary_all_cities.xlsx"
 TOPN_XLSX = BASE_DIR / "data" / "topn_per_tahun_per_kota.csv"
 REGIONAL_XLSX = BASE_DIR / "data" / "regional_correlation_summary.xlsx"
 _REGION_CACHE = {"mtime": None, "df": None}
@@ -248,7 +262,7 @@ def _compute_last_actual_dates(path_xlsx: str) -> dict:
     raw = raw.dropna(subset=[date_col]).sort_values(date_col)
     value_cols = raw.columns[1:]
 
-    cutoff = pd.Timestamp("2025-10-15")  # batas akhir data nyata
+    cutoff = pd.Timestamp("2025-10-17")  # batas akhir data nyata
     last = {}
     for c in value_cols:
         ent = re.sub(r"\s+", "_", str(c).strip().lower())
@@ -312,6 +326,94 @@ def make_features_entity(dfe: pd.DataFrame, horizon=1):
 
 def _week_of_month_int(dt: pd.Timestamp) -> int:
     return int(((dt.day - 1) // 7) + 1)
+
+import math
+
+import math
+import numpy as np
+
+def _safe_float_or_none(obj):
+    """
+    Convert value to float safely. Return None if it's NaN, Inf, None, or not convertible.
+    """
+    import numpy as np
+    import pandas as pd
+    import math
+
+    try:
+        # handle None / NaN-like
+        if obj is None:
+            return None
+
+        # handle pandas/numpy NaN and empty arrays
+        if isinstance(obj, (np.ndarray, pd.Series)):
+            # empty array/series -> None
+            if obj.size == 0:
+                return None
+            # if it's scalar-like array, take first value
+            obj = obj.item() if obj.size == 1 else float(obj.mean())
+
+        # handle pd.NA or NaN
+        if hasattr(pd, "isna") and pd.isna(obj):
+            return None
+
+        # convert to float
+        v = float(obj)
+        if math.isnan(v) or math.isinf(v):
+            return None
+        return v
+    except Exception:
+        return None
+def _sanitize_for_json(o):
+    if isinstance(o, dict):
+        return {k: _sanitize_for_json(v) for k,v in o.items()}
+    if isinstance(o, list):
+        return [_sanitize_for_json(x) for x in o]
+    if pd.isna(o):
+        return None
+    # numpy scalars
+    try:
+        import numpy as np
+        if isinstance(o, (np.floating, np.integer)):
+            return o.item()
+    except Exception:
+        pass
+    return o
+
+
+def _find_non_json_numbers(obj, path=''):
+    """
+    Recursively find locations of NaN/Inf/non-serializable numeric-like values.
+    Returns list of (path, value_repr).
+    """
+    problems = []
+    if obj is None:
+        return problems
+    # check numpy/pandas scalars
+    if isinstance(obj, (np.floating, float)):
+        v = float(obj)
+        if math.isnan(v) or math.isinf(v):
+            problems.append((path or '/', v))
+        return problems
+    if isinstance(obj, np.integer):
+        return problems
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            problems += _find_non_json_numbers(v, f"{path}/{k}" if path else str(k))
+        return problems
+    if isinstance(obj, (list, tuple)):
+        for i, v in enumerate(obj):
+            problems += _find_non_json_numbers(v, f"{path}[{i}]")
+        return problems
+    # pandas stuff
+    try:
+        import pandas as pd
+        if isinstance(obj, pd.Timestamp):
+            return problems
+    except Exception:
+        pass
+    return problems
+
 
 def _basic_stats(arr: np.ndarray) -> dict:
     arr = np.asarray(arr, dtype=float)
@@ -387,6 +489,130 @@ def _load_eval_metrics():
 
     _EVAL_CACHE = data
     return _EVAL_CACHE
+
+import math
+import re
+import pandas as pd
+import numpy as np
+from pathlib import Path
+
+# contoh: EVAL_XLSX = Path("data/eval_summary.xlsx")
+# global cache variable exists in your code: _EVAL_CACHE
+
+def _normalize_colname(c: str) -> str:
+    """Lowercase, strip, remove percent/paren, replace spaces and special chars."""
+    if c is None:
+        return ""
+    s = str(c).strip().lower()
+    s = s.replace("%", "pct")
+    s = re.sub(r"[\(\)\[\]\-\/\\]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+def _load_eval_metrics(city: str = None):
+    """
+    Baca Excel evaluasi model.
+    Jika `city` diberikan, cari langsung baris yang cocok di kolom 'Kota' atau 'Kab/Kota'.
+    Jika tidak, kembalikan semua hasil evaluasi dalam bentuk dict per kota.
+    """
+    global _EVAL_CACHE
+    p = EVAL_XLSX
+
+    if not p.exists():
+        print("DEBUG eval file not found:", p)
+        return None if city else {}
+
+    df = pd.read_excel(p)
+    col_map = {c.lower(): c for c in df.columns}
+    col_kota = (
+        col_map.get("kota")
+        or col_map.get("city")
+        or col_map.get("kab/kota")
+        or col_map.get("kabupaten/kota")
+    )
+    col_mae  = col_map.get("mae")
+    col_rmse = col_map.get("rmse")
+    col_mape = col_map.get("mape") or col_map.get("mape(%)")
+    col_r2   = col_map.get("r2") or col_map.get("r²") or col_map.get("r2 score")
+
+    if not col_kota:
+        print("⚠️ Kolom 'Kota' tidak ditemukan di file evaluasi.")
+        return None if city else {}
+
+    # ======== JIKA CITY DIKIRIM, CARI LANGSUNG BARISNYA ========
+    if city:
+        city_norm = _slugify_city(city)  # contoh: "Kab. Banyumas" → "kab_banyumas"
+
+        # Normalisasi kolom nama kota dari Excel juga
+        df["_slug"] = df[col_kota].astype(str).apply(lambda x: _slugify_city(x))
+
+        # Cari exact match slug dulu
+        match = df[df["_slug"] == city_norm]
+        if match.empty:
+            # fallback: cari baris yang mengandung nama kota (lebih fleksibel)
+            match = df[df[col_kota].astype(str).str.lower().str.contains(city.lower())]
+
+        if not match.empty:
+            row = match.iloc[0]  # ambil baris pertama yang cocok
+            label = str(row[col_kota]).strip()
+
+            mae  = _to_float_safe(row.get(col_mae))
+            rmse = _to_float_safe(row.get(col_rmse))
+            mape = _to_float_safe(row.get(col_mape))
+            r2   = _to_float_safe(row.get(col_r2))
+            if mape and mape > 1.5:
+                mape = mape / 100.0
+            mse = rmse ** 2 if rmse is not None else None
+
+            return {
+                "label": label,
+                "mae": mae,
+                "rmse": rmse,
+                "mse": mse,
+                "mape": mape,
+                "r2": r2
+            }
+
+        # kalau gak ada yang cocok sama sekali
+        print(f"⚠️ City '{city}' tidak ditemukan di file evaluasi.")
+        return None
+
+    # ======== JIKA TIDAK ADA PARAM CITY, LOAD SEMUA ========
+    data = {}
+    for _, row in df.iterrows():
+        label = str(row[col_kota]).strip()
+        if not label:
+            continue
+        slug = _slugify_city(label)
+
+        mae  = _to_float_safe(row.get(col_mae))
+        rmse = _to_float_safe(row.get(col_rmse))
+        mape = _to_float_safe(row.get(col_mape))
+        r2   = _to_float_safe(row.get(col_r2))
+        if mape and mape > 1.5:
+            mape = mape / 100.0
+        mse = rmse ** 2 if rmse is not None else None
+
+        data[slug] = {
+            "label": label,
+            "mae": mae,
+            "rmse": rmse,
+            "mse": mse,
+            "mape": mape,
+            "r2": r2
+        }
+
+    _EVAL_CACHE = data
+    return _EVAL_CACHE
+
+
+def _to_float_safe(v):
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+
 
 print(">> Starting app.py")
 print(">> Expecting Excel at:", DATA_PATH)
@@ -600,62 +826,6 @@ def make_features_for_next(dfe: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     return df, feature_cols
 
 
-def _recursive_predict(entity: str, days: int, mode: str = "test"):
-    if days <= 0:
-        return []
-
-    b = _load_model_for_entity(entity,mode = mode)
-    model     = b["model"]
-    mode      = b["mode"]
-    transform = b["transform"]
-    smear     = b["smear"]
-    alpha     = b.get("alpha", 1.0)
-
-    dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["entity","date","value"]].copy()
-    dfe["date"] = pd.to_datetime(dfe["date"]).dt.normalize()
-    dfe = dfe.sort_values("date")
-
-    last_actual_dt = LAST_ACTUAL.get(entity, dfe["date"].max().normalize())
-    dfe = dfe[dfe["date"] <= last_actual_dt].copy()
-    if dfe.empty:
-        raise RuntimeError(f"Data kosong untuk {entity} sebelum {last_actual_dt}")
-
-    preds = []
-    for _ in range(days):
-        # Build fitur training-like sampai tanggal TERAKHIR aktual/prediksi saat ini
-        df_feat = _build_features_training_like(dfe, add_targets=False)
-
-        # Ambil baris TERAKHIR sebagai fitur untuk memprediksi t+1
-        # (di training, baris t dipakai untuk menebak y_{t+1})
-        X_last = df_feat.drop(columns=["entity","date","value"], errors="ignore").iloc[[-1]]
-        if X_last.isna().any(axis=None):
-            raise RuntimeError("Fitur terakhir masih NaN (histori kurang).")
-
-        yhat_tr = float(_predict_with_safe_names(model, X_last)[0])
-        last_date = dfe["date"].max().normalize()
-        last_val  = float(dfe["value"].iloc[-1])
-
-        if mode == "level":
-            y_next = float(np.exp(yhat_tr) * smear) if transform == "log" else float(yhat_tr)
-        else:
-            delta  = float(alpha * yhat_tr)
-            delta  = float(np.clip(delta, -500, 500))
-            y_next = float(last_val + delta)
-
-        next_date = last_date + pd.Timedelta(days=1)
-        if preds and pd.to_datetime(preds[-1]["date"]) >= next_date:
-            next_date = pd.to_datetime(preds[-1]["date"]) + pd.Timedelta(days=1)
-
-        preds.append({"date": next_date.date().isoformat(), "pred": round(y_next, 4)})
-
-        # Append prediksi supaya step berikutnya bisa pakai sebagai lag_1, lag_30, dll.
-        dfe = pd.concat(
-            [dfe, pd.DataFrame([{"entity": entity, "date": next_date, "value": y_next}])],
-            ignore_index=True
-        )
-
-    return preds
-
 # ===== Loader Excel regional (ringkasan korelasi) =====
 def _norm_colmap_regional(df: pd.DataFrame):
     cmap = {c.lower().strip(): c for c in df.columns}
@@ -693,6 +863,23 @@ def _date_iso(x):
     if pd.isna(x): return None
     try: return pd.to_datetime(x).date().isoformat()
     except: return str(x)
+
+import math
+
+def _safe_str(x):
+    """
+    Return normalized string or empty string if x is None/NaN.
+    Avoid calling .strip() on non-string objects.
+    """
+    if x is None:
+        return ""
+    # pandas/ numpy NaN check
+    try:
+        if isinstance(x, float) and math.isnan(x):
+            return ""
+    except Exception:
+        pass
+    return str(x).strip()
 
 def _load_regional_df():
     if not REGIONAL_XLSX.exists():
@@ -742,74 +929,6 @@ def _load_regional_df():
 
 
 
-_TOPN_CACHE = {"mtime": None, "df": None}
-def _parse_id_number(x):
-    """
-    Terima string angka gaya ID ('12,392' atau '19.400' atau '12 650'),
-    buang pemisah ribuan, lalu parse ke float.
-    """
-    if pd.isna(x): return np.nan
-    s = str(x).strip()
-    # buang semua non-digit/non-minus/non-dot
-    # (koma/dot/spasi sebagai pemisah ribuan akan hilang)
-    import re
-    s = re.sub(r"[^\d\.\-]", "", s)
-    # kalau masih ada lebih dari satu titik (kasus ribuan '.'), buang semua titik:
-    if s.count(".") > 1:
-        s = s.replace(".", "")
-    # jika formatnya cuma ribuan '19.400' (satu titik), ini juga harus jadi 19400
-    # heuristik: kalau setelah titik sisa 3 digit → buang titik
-    if s.count(".") == 1:
-        left, right = s.split(".")
-        if len(right) == 3 and right.isdigit():
-            s = left + right
-    try:
-        return float(s)
-    except:
-        return np.nan
-def _load_topn_df():
-    """
-    Baca hanya Sheet1 dari Excel topn_per_tahun_per_kota.xlsx
-    Kolom minimal: year, province (boleh kosong), city, avg, min, max, n
-    """
-    if not TOPN_XLSX.exists():
-        raise FileNotFoundError(f"File TopN tidak ditemukan: {TOPN_XLSX}")
-
-    mtime = TOPN_XLSX.stat().st_mtime
-    if _TOPN_CACHE["df"] is not None and _TOPN_CACHE["mtime"] == mtime:
-        return _TOPN_CACHE["df"]
-
-    # Pakai sheet pertama saja
-    df = pd.read_excel(TOPN_XLSX, sheet_name=0)
-
-    # Normalisasi nama kolom (lowercase, strip)
-    colmap = {c.lower().strip(): c for c in df.columns}
-    col_year = colmap.get("year") or colmap.get("tahun")
-    col_city = colmap.get("city") or colmap.get("city_label") or colmap.get("kota") or colmap.get("kab/kota") or colmap.get("kabupaten/kota")
-    col_prov = colmap.get("province") or colmap.get("provinsi")
-    col_avg  = colmap.get("avg") or colmap.get("rata") or colmap.get("rata2") or colmap.get("mean")
-    col_min  = colmap.get("min")
-    col_max  = colmap.get("max")
-    col_n    = colmap.get("n")   or colmap.get("count") or colmap.get("jumlah")
-
-    required = [col_year, col_city, col_avg]
-    if any(c is None for c in required):
-        raise ValueError("Sheet1 wajib punya kolom: year, city, avg (province/min/max/n opsional).")
-
-    out = pd.DataFrame({
-        "year":     pd.to_numeric(df[col_year], errors="coerce"),
-        "city":     df[col_city].astype(str),
-        "province": df[col_prov].astype(str) if col_prov else "",
-        "avg":      df[col_avg].apply(_parse_id_number),
-        "min":      df[col_min].apply(_parse_id_number) if col_min else np.nan,
-        "max":      df[col_max].apply(_parse_id_number) if col_max else np.nan,
-        "n":        pd.to_numeric(df[col_n], errors="coerce") if col_n else np.nan,
-    })
-
-    out = out.dropna(subset=["year", "city", "avg"]).copy()
-    out["year"] = out["year"].astype(int)
-    _TOPN_CACHE.update({"mtime": mtime, "df": out})
-    return out
 # =======================
 # ROUTES
 # =======================
@@ -916,158 +1035,651 @@ def api_price_at():
                     "date": target_date.date().isoformat(),
                     "message": "tanggal tidak ada di dataset (bukan titik observasi)"})
 
-def _load_precomputed_choropleth(year, month=None, week=None):
-    """
-    Baca file prediksi hasil precompute.
-    Prioritas: year+month+week → year+month.
-    Return dict JSON atau None jika file tidak ditemukan.
-    """
+
+
+_PRECOMP_CACHE = {}
+# Prediction caches (if used elsewhere)
+_RC_PRED_CACHE = {}
+RC_PRED_CACHE_TTL = 60 * 30
+RC_PRED_MAX_WORKERS = 6
+RC_PRED_HORIZON_LIMIT = 365
+
+
+
+def _load_precomputed_choropleth(year, month=None, week=None, island=None):
+    # key includes island to cache per-filter
+    key = f"choropleth:{year}:{month or 'all'}:{week or 'all'}:{(island or '').strip().upper()}"
+    if key in _PRECOMP_CACHE:
+        return _PRECOMP_CACHE[key]
+
     base = Path("static/data")
-    if week and month:
-        fp = base / f"choropleth_pred_{year:04d}_{month:02d}_w{int(week)}.json"
-    elif month:
-        fp = base / f"choropleth_pred_{year:04d}_{month:02d}.json"
+    payloads = []
+    def _read_file(fp):
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            app.logger.debug(f"Failed reading precomputed file {fp}: {e}")
+            return None
+
+    if month is None:
+        files = sorted(base.glob(f"choropleth_pred_{year:04d}_*.json"))
+        for fp in files:
+            p = _read_file(fp)
+            if p and isinstance(p.get("data", []), list):
+                payloads.append(p)
     else:
+        if week:
+            fp = base / f"choropleth_pred_{year:04d}_{int(month):02d}_w{int(week)}.json"
+            if fp.exists():
+                p = _read_file(fp)
+                if p: payloads.append(p)
+        fp = base / f"choropleth_pred_{year:04d}_{int(month):02d}.json"
+        if fp.exists():
+            p = _read_file(fp)
+            if p: payloads.append(p)
+
+    if not payloads:
         return None
-    if not fp.exists():
-        print(f"[WARN] Precomputed file not found: {fp}")
-        return None
-    try:
-        with open(fp, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"[ERROR] Failed to read {fp}: {e}")
-        return None
+
+    combined = []
+    raw_entries = []
+    for p in payloads:
+        for entry in p.get("data", []):
+            # guard against non-dict entries
+            if not isinstance(entry, dict):
+                continue
+            city_val = entry.get("city") or entry.get("entity") or entry.get("kota") or entry.get("name") or None
+            province = entry.get("province") or entry.get("provinsi") or entry.get("province_name") or None
+            island_from_entry = entry.get("island") or entry.get("pulau") or None
+            date = entry.get("date") or entry.get("tanggal") or None
+            value = _safe_float_or_none(entry.get("value") or entry.get("harga") or None)
+
+            # require province and numeric value to include
+            if province is None or value is None:
+                continue
+
+            rec = {
+                "entity": str(city_val).strip() if city_val else None,
+                "province": str(province).strip() if province is not None else None,
+                # keep raw island but don't strip non-strings yet
+                "island": island_from_entry.strip() if isinstance(island_from_entry, str) else island_from_entry,
+                "value": value,
+                "date": date
+            }
+            combined.append(rec)
+            raw_entries.append(rec)
+
+    if not combined:
+        out = {"year": year, "month": month, "week": week,
+               "generated_at": payloads[0].get("generated_at"),
+               "model_version": payloads[0].get("model_version"),
+               "data": []}
+        _PRECOMP_CACHE[key] = out
+        return out
+
+    df = pd.DataFrame(combined)
+
+    # infer island if missing
+    def infer_island(row):
+        if row.get("island"):
+            return str(row["island"]).strip()
+        prov = str(row.get("province") or "").strip()
+        # try upper-case and raw mapping
+        return PROVINCE_TO_ISLAND.get(prov.upper()) or PROVINCE_TO_ISLAND.get(prov) or None
+
+    df["island"] = df.apply(infer_island, axis=1)
+
+    # if island param supplied, still allow passing it to filter
+    if island and island.strip().lower() != "semua pulau":
+        df = df[df["island"].astype(str).str.upper() == str(island).strip().upper()]
+
+    if df.empty:
+        out = {"year": year, "month": month, "week": week,
+               "generated_at": payloads[0].get("generated_at"),
+               "model_version": payloads[0].get("model_version"),
+               "data": []}
+        _PRECOMP_CACHE[key] = out
+        return out
+
+    df["entity_norm"] = df["entity"].fillna("").astype(str).str.strip()
+    df.loc[df["entity_norm"] == "", "entity_norm"] = None
+
+    city_df = df.dropna(subset=["entity_norm"]).groupby("entity_norm", dropna=True).agg(
+        city_mean=("value","mean"),
+        province=("province","first"),
+        island=("island","first")
+    ).reset_index().rename(columns={"entity_norm":"entity"})
+
+    no_entity_df = df[df["entity_norm"].isna()].groupby("province", dropna=True).agg(
+        province_mean_rows=("value","mean")
+    ).reset_index()
+
+    prov_from_cities = city_df.groupby("province").agg(value=("city_mean","mean"), n_cities=("entity","nunique")).reset_index()
+
+    if not no_entity_df.empty:
+        no_entity_df["province"] = no_entity_df["province"].astype(str).str.strip()
+        prov_from_cities = prov_from_cities.merge(no_entity_df, on="province", how="outer")
+        prov_from_cities["value"] = prov_from_cities["value"].fillna(prov_from_cities["province_mean_rows"])
+        mask_both = prov_from_cities["province_mean_rows"].notna() & prov_from_cities["n_cities"].notna()
+        if mask_both.any():
+            prov_from_cities.loc[mask_both, "value"] = (
+                (prov_from_cities.loc[mask_both, "value"] * prov_from_cities.loc[mask_both, "n_cities"])
+                + prov_from_cities.loc[mask_both, "province_mean_rows"]
+            ) / (prov_from_cities.loc[mask_both, "n_cities"] + 1)
+            prov_from_cities.loc[mask_both, "n_cities"] = prov_from_cities.loc[mask_both, "n_cities"] + 1
+        prov_from_cities["n_cities"] = prov_from_cities["n_cities"].fillna(1).astype(int)
+        prov_from_cities = prov_from_cities[["province","value","n_cities"]]
+    else:
+        prov_from_cities["n_cities"] = prov_from_cities["n_cities"].fillna(0).astype(int)
+
+    # normalize province strings
+    prov_from_cities["province"] = prov_from_cities["province"].astype(str).str.strip()
+    prov_from_cities["value"] = prov_from_cities["value"].astype(float)
+
+    # map to island; keep possible None here but we'll normalize when emitting
+    prov_from_cities["island"] = prov_from_cities["province"].str.upper().map(PROVINCE_TO_ISLAND)
+    for i, row in prov_from_cities.iterrows():
+        if not row["island"]:
+            vals = df.loc[df["province"].str.strip() == row["province"], "island"].dropna().unique()
+            prov_from_cities.at[i, "island"] = vals[0] if len(vals) else None
+
+    # build out_data but normalize island -> safe string (no None keys later)
+    out_data = []
+    for r in prov_from_cities.itertuples(index=False):
+        # normalize island to safe string key ("unknown" if missing)
+        isl_val = r.island
+        if isl_val is None or (isinstance(isl_val, float) and pd.isna(isl_val)):
+            isl_key = "unknown"
+            isl_emit = None  # keep emitted value None if you prefer; but key uses 'unknown' downstream
+        else:
+            isl_key = str(isl_val).strip()
+            isl_emit = isl_key if isl_key else "unknown"
+
+        out_data.append({
+            "province": r.province,
+            "value": float(r.value),
+            # for compatibility keep island as string (use isl_emit) — this keeps downstream consistent
+            "island": isl_emit,
+            "n_cities": int(r.n_cities)
+        })
+
+    out = {
+        "year": year, "month": month, "week": week,
+        "generated_at": payloads[0].get("generated_at"),
+        "model_version": payloads[0].get("model_version"),
+        "data": out_data,
+        "raw_entries": raw_entries
+    }
+    _PRECOMP_CACHE[key] = out
+    return out
+
+# ----------------- API endpoint -----------------
 @app.route("/api/choropleth")
 def api_choropleth():
-    island = request.args.get("island","Semua Pulau").strip()
-    year   = request.args.get("year","").strip()
-    month  = request.args.get("month","").strip()
-    week   = request.args.get("week","").strip()
-    mode = (request.args.get("mode") or "actual").strip().lower()
-
-
-    if not year: return jsonify({"error":"param ?year= wajib"}), 400
     try:
-        year  = int(year)
-        month = int(month) if month else None
-        week  = int(week)  if week  else None
-    except:
-        return jsonify({"error":"format year/month/week tidak valid"}), 400
-    if mode == "predicted":
-        pre = _load_precomputed_choropleth(year, month, week)
-        if pre is None:
-            # fallback → actual
-            print(f"[INFO] No precomputed file found for {year}-{month} w{week}, fallback to actual")
-            mode = "actual"
-        else:
-            # ambil data dari file precomputed
-            prov_list = pre.get("data", [])
-            if not prov_list:
-                return jsonify({"data": [], "buckets": None, "last_actual": None})
-            
-            vals = np.array([p["value"] for p in prov_list])
-            q1, q2 = np.quantile(vals, [1/3, 2/3])
+        island = (request.args.get("island") or "Semua Pulau").strip()
+        year_q = (request.args.get("year") or "").strip()
+        month_q = (request.args.get("month") or "").strip()
+        week_q = (request.args.get("week") or "").strip()
+        mode = (request.args.get("mode") or "actual").strip().lower()
 
-            def cat(v):
+        # new params
+        bucket_scope = (request.args.get("bucket_scope") or "national").strip().lower()
+        if bucket_scope not in ("national", "island"):
+            return jsonify({"error":"bucket_scope harus 'national' atau 'island'"}), 400
+        include_table = str(request.args.get("include_table") or request.args.get("table") or "0").lower() in ("1","true","yes")
+
+        if not year_q:
+            return jsonify({"error":"param ?year= wajib"}), 400
+        try:
+            year = int(year_q)
+            month = int(month_q) if month_q else None
+            week = int(week_q) if week_q else None
+        except Exception:
+            return jsonify({"error":"format year/month/week tidak valid"}), 400
+
+        if mode == "predicted":
+            pre = _load_precomputed_choropleth(year, month, week, island)
+            if pre is None:
+                app.logger.info(f"No precomputed file found for {year}-{month} w{week}, fallback to actual")
+                mode = "actual"
+            else:
+                        raw = pre.get("data", []) or []
+                        # filter by island early if requested
+                        if island and island.strip().lower() != "semua pulau":
+                            def _isl_ok(x):
+                                try:
+                                    return str((x.get("island") or "")).strip().lower() == island.strip().lower()
+                                except Exception:
+                                    return False
+                            raw = [p for p in raw if isinstance(p, dict) and _isl_ok(p)]
+
+                        # if after filtering nothing remains -> return empty predicted response
+                        if not raw:
+                            resp_empty = {
+                                "mode": "predicted",
+                                "year": year,
+                                "month": month,
+                                "week": week,
+                                "generated_at": pre.get("generated_at"),
+                                "model_version": pre.get("model_version"),
+                                "buckets": None,
+                                "data": [],
+                                "table": []
+                            }
+                            return jsonify(_sanitize_for_json(resp_empty))
+
+                        # --- build a normalized DataFrame from raw entries ---------------------------
+                        # Normalize keys; create DataFrame defensively
+                        df_c = pd.DataFrame(raw)
+
+                        # normalize column names to lowercase simple keys
+                        if len(df_c.columns):
+                            colmap = {c: str(c).strip().lower() for c in df_c.columns}
+                            df_c.rename(columns=colmap, inplace=True)
+
+                        # Ensure 'city' column exists: try common alternatives, then extract from dicts, else synthesize
+                        if "city" not in df_c.columns:
+                            for cand in ("entity", "name", "kota", "entity_name"):
+                                if cand in df_c.columns:
+                                    df_c = df_c.rename(columns={cand: "city"})
+                                    break
+
+                        if "city" not in df_c.columns:
+                            # Try to extract from original raw list
+                            extracted = []
+                            for i, entry in enumerate(raw):
+                                val = None
+                                if isinstance(entry, dict):
+                                    for k in ("city", "entity", "name", "kota"):
+                                        if k in entry and entry.get(k) not in (None, ""):
+                                            val = entry.get(k)
+                                            break
+                                if val in (None, ""):
+                                    val = f"city_{i}"
+                                extracted.append(val)
+                            df_c["city"] = extracted
+
+                        # Normalize province column variants
+                        if "province" not in df_c.columns and "provinsi" in df_c.columns:
+                            df_c["province"] = df_c["provinsi"].astype(str)
+
+                        # Ensure 'value' exists and convert to numeric (coerce)
+                        if "value" in df_c.columns:
+                            # keep original but create cleaned numeric column
+                            df_c["value"] = pd.to_numeric(df_c["value"], errors="coerce")
+                        else:
+                            df_c["value"] = pd.NA
+
+                        # Normalize island column to stripped strings when present
+                        if "island" in df_c.columns:
+                            df_c["island"] = df_c["island"].apply(lambda x: str(x).strip() if pd.notna(x) else None)
+                        else:
+                            df_c["island"] = pd.NA
+
+                        # Parse date if present
+                        if "date" in df_c.columns:
+                            df_c["date"] = pd.to_datetime(df_c["date"], errors="coerce")
+                        # -----------------------------------------------------------------------------
+
+                        # keep only rows with numeric value for city-level stats
+                        city_df = df_c.dropna(subset=["value"]).copy()
+
+                        if city_df.empty:
+                            city_stats = pd.DataFrame(columns=["city", "mean_val", "min_val", "max_val", "cnt", "province", "island"])
+                        else:
+                            # group on string city (guard against non-string)
+                            city_stats = city_df.groupby(city_df["city"].astype(str)).agg(
+                                mean_val=("value", "mean"),
+                                min_val=("value", "min"),
+                                max_val=("value", "max"),
+                                cnt=("value", "count")
+                            ).reset_index().rename(columns={"city": "city"})
+
+                            # attach province/island where available (pick first non-null per city)
+                            if "province" in city_df.columns and city_df["province"].notna().any():
+                                prov_map = city_df[["city", "province"]].drop_duplicates("city").set_index("city")["province"].to_dict()
+                                city_stats["province"] = city_stats["city"].map(prov_map)
+                                # map province -> island using PROVINCE_TO_ISLAND robustly
+                                def _map_prov_to_island(p):
+                                    if p is None or (isinstance(p, float) and pd.isna(p)):
+                                        return None
+                                    pk = str(p).strip()
+                                    if not pk:
+                                        return None
+                                    if PROVINCE_TO_ISLAND:
+                                        if pk in PROVINCE_TO_ISLAND:
+                                            return PROVINCE_TO_ISLAND[pk]
+                                        # try case-insensitive match
+                                        for k, v in PROVINCE_TO_ISLAND.items():
+                                            if str(k).strip().casefold() == pk.casefold():
+                                                return v
+                                    return None
+                                city_stats["island"] = city_stats["province"].map(_map_prov_to_island)
+                            else:
+                                # fallback: try to map from city_df['island'] if available
+                                isl_map = {}
+                                if "island" in city_df.columns and city_df["island"].notna().any():
+                                    isl_map = city_df[["city", "island"]].drop_duplicates("city").set_index("city")["island"].to_dict()
+                                city_stats["province"] = city_stats["city"].map(lambda c: prov_map.get(c) if 'prov_map' in locals() else None)
+                                city_stats["island"] = city_stats["city"].map(lambda c: isl_map.get(c) if isl_map else None)
+
+                        # Normalize numeric fields in city_stats
+                        city_stats["mean_val"] = city_stats["mean_val"].apply(_safe_float_or_none)
+                        city_stats["min_val"] = city_stats["min_val"].apply(_safe_float_or_none)
+                        city_stats["max_val"] = city_stats["max_val"].apply(_safe_float_or_none)
+                        city_stats["cnt"] = city_stats["cnt"].fillna(0).astype(int)
+
+                        # --- province-level aggregation: mean of city means --------------------------------
+                        # group by province (allow None groups)
+                        prov_vals = city_stats.groupby("province", dropna=False, as_index=False).agg(
+                            value=("mean_val", "mean"),
+                            n_cities=("city", "nunique")
+                        ).reset_index()
+                        prov_vals["value"] = prov_vals["value"].apply(_safe_float_or_none)
+                        # normalize province string
+                        prov_vals["province"] = prov_vals["province"].apply(lambda x: None if pd.isna(x) else str(x).strip())
+
+                        # derive island for prov_vals where missing, using PROVINCE_TO_ISLAND or city-level island data
+                        prov_vals["island"] = prov_vals["province"].map(lambda p: (PROVINCE_TO_ISLAND.get(p) if p and PROVINCE_TO_ISLAND else None) if p else None)
+                        for i, row in prov_vals.iterrows():
+                            if not row.get("island"):
+                                # try city-level island or df_c island values
+                                province_key = row.get("province") or ""
+                                vals = df_c.loc[df_c["province"].astype(str).str.strip() == province_key, "island"].dropna().unique()
+                                prov_vals.at[i, "island"] = vals[0] if len(vals) else None
+                        # ----------------------------------------------------------------------------------
+                        def _isl_key(k):
+                            if k is None: return "unknown"
+                            if isinstance(k, float) and pd.isna(k): return "unknown"
+                            s = str(k).strip()
+                            return s if s else "unknown"
+                        # build buckets & data_out (respect bucket_scope)
+                        data_out = []
+                        buckets_out = None
+
+                        if bucket_scope == "island":
+                            buckets_out = {}
+                            # group by island; note groupby will put NaN island into group with key NaN -> convert to None string key
+                            for isl_name, grp in prov_vals.groupby("island", dropna=False):
+                                # use None for missing island to keep JSON-friendly
+                                key = _isl_key(isl_name)
+                                vals = [v for v in grp["value"].tolist() if v is not None]
+                                if vals:
+                                    try:
+                                        q1_raw, q2_raw = np.quantile(np.array(vals), [1/3, 2/3])
+                                    except Exception:
+                                        q1_raw = q2_raw = None
+                                    q1 = _safe_float_or_none(q1_raw); q2 = _safe_float_or_none(q2_raw)
+                                else:
+                                    q1 = q2 = None
+                                buckets_out[key] = {"low": q1, "mid": q2}
+                                def cat_local(v):
+                                    if v is None or q1 is None: return "no-data"
+                                    if v <= q1: return "low"
+                                    if v <= q2: return "mid"
+                                    return "high"
+                                for r in grp.itertuples(index=False):
+                                    v = _safe_float_or_none(getattr(r, "value", None))
+                                    data_out.append({
+                                        "province": getattr(r, "province", None),
+                                        "value": v,
+                                        "category": cat_local(v),
+                                        "island": key,
+                                        "n_cities": int(getattr(r, "n_cities", 0) or 0)
+                                    })
+                        else:
+                            vals = [v for v in prov_vals["value"].tolist() if v is not None]
+                            if vals:
+                                try:
+                                    q1_raw, q2_raw = np.quantile(np.array(vals), [1/3, 2/3])
+                                except Exception:
+                                    q1_raw = q2_raw = None
+                            else:
+                                q1_raw = q2_raw = None
+                            q1 = _safe_float_or_none(q1_raw); q2 = _safe_float_or_none(q2_raw)
+                            buckets_out = {"low": q1, "mid": q2}
+                            def cat_global(v):
+                                if v is None or q1 is None: return "no-data"
+                                if v <= q1: return "low"
+                                if v <= q2: return "mid"
+                                return "high"
+                            for r in prov_vals.itertuples(index=False):
+                                v = _safe_float_or_none(getattr(r, "value", None))
+                                data_out.append({
+                                    "province": getattr(r, "province", None),
+                                    "value": v,
+                                    "category": cat_global(v),
+                                    "island": getattr(r, "island", None),
+                                    "n_cities": int(getattr(r, "n_cities", 0) or 0)
+                                })
+
+                        # build table rows (per-city) when include_table true
+                        table_rows = []
+                        if include_table:
+                            raw_entries = pre.get("raw_entries") or pre.get("data") or None
+                            if raw_entries and isinstance(raw_entries, list) and len(raw_entries):
+                                df_r = pd.DataFrame(raw_entries)
+                                # normalize column names
+                                df_r.columns = [str(c).strip() for c in df_r.columns]
+                                colmap = {c: c.lower() for c in df_r.columns}
+                                df_r.rename(columns=colmap, inplace=True)
+
+                                def find_col(df, candidates):
+                                    for cand in candidates:
+                                        if cand in df.columns:
+                                            return cand
+                                    return None
+                                entity_col = find_col(df_r, ['entity', 'city', 'kota', 'name'])
+                                value_col = find_col(df_r, ['value', 'harga', 'price', 'val'])
+                                province_col = find_col(df_r, ['province', 'provinsi', 'prov', 'province_name'])
+                                date_col = find_col(df_r, ['date', 'tanggal', 'ts', 'datetime'])
+
+                                if entity_col:
+                                    df_r['entity'] = df_r[entity_col].astype(str)
+                                else:
+                                    df_r['entity'] = df_r.index.map(lambda i: f"city_{i}")
+
+                                if value_col:
+                                    df_r['value'] = pd.to_numeric(df_r[value_col], errors='coerce')
+                                else:
+                                    df_r['value'] = pd.NA
+
+                                if province_col:
+                                    df_r['province'] = df_r[province_col].astype(str)
+                                else:
+                                    df_r['province'] = pd.NA
+
+                                if date_col:
+                                    df_r['date'] = pd.to_datetime(df_r[date_col], errors='coerce')
+                                else:
+                                    df_r['date'] = pd.NaT
+
+                                agg_df = df_r.groupby('entity').agg(
+                                    min_value=('value', 'min'),
+                                    max_value=('value', 'max'),
+                                    mean_value=('value', 'mean'),
+                                    count=('value', 'count')
+                                ).reset_index().rename(columns={'entity': 'city'})
+
+                                if 'date' in df_r.columns and not df_r['date'].isna().all():
+                                    min_dates = df_r.groupby('entity')['date'].min().reset_index().rename(columns={'entity': 'city', 'date': 'min_date'})
+                                    max_dates = df_r.groupby('entity')['date'].max().reset_index().rename(columns={'entity': 'city', 'date': 'max_date'})
+                                    agg_df = agg_df.merge(min_dates, on='city', how='left').merge(max_dates, on='city', how='left')
+
+                                if 'province' in df_r.columns and df_r['province'].notna().any():
+                                    prov_map = df_r[['entity', 'province']].drop_duplicates('entity').rename(columns={'entity': 'city'})
+                                    agg_df = agg_df.merge(prov_map, on='city', how='left')
+
+                                for r in agg_df.itertuples(index=False):
+                                    province_val = getattr(r, 'province', None)
+                                    island_val = None
+                                    if province_val and PROVINCE_TO_ISLAND:
+                                        pkey = str(province_val).strip()
+                                        island_val = PROVINCE_TO_ISLAND.get(pkey)
+                                        if island_val is None:
+                                            for k, v in PROVINCE_TO_ISLAND.items():
+                                                if str(k).strip().casefold() == pkey.casefold():
+                                                    island_val = v
+                                                    break
+
+                                    table_rows.append({
+                                        "city": getattr(r, "city", None),
+                                        "province": province_val if pd.notna(province_val) else None,
+                                        "island": island_val,
+                                        "min": _safe_float_or_none(getattr(r, "min_value", None)),
+                                        "min_date": (getattr(r, "min_date").date().isoformat() if getattr(r, "min_date", None) is not pd.NaT and getattr(r, "min_date", None) is not None else None),
+                                        "max": _safe_float_or_none(getattr(r, "max_value", None)),
+                                        "max_date": (getattr(r, "max_date").date().isoformat() if getattr(r, "max_date", None) is not pd.NaT and getattr(r, "max_date", None) is not None else None),
+                                        "mean": _safe_float_or_none(getattr(r, "mean_value", None)),
+                                        "count": int(getattr(r, "count", 0) or 0)
+                                    })
+                            else:
+                                table_rows = []
+
+                        # final response for predicted mode
+                        resp = {
+                            "mode": "predicted",
+                            "year": year,
+                            "month": month,
+                            "week": week,
+                            "generated_at": pre.get("generated_at"),
+                            "model_version": pre.get("model_version"),
+                            "agg": "precomputed (province-aggregated-from-city-means)",
+                            "bucket_scope": bucket_scope,
+                            "buckets": buckets_out,
+                            "data": data_out,
+                            "table": table_rows
+                        }
+                        return jsonify(_sanitize_for_json(resp))
+
+
+        
+        df = LONG_DF[["entity","date","value"]].copy()
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
+        df = df[df["date"].dt.year == year]
+        if month:
+            df = df[df["date"].dt.month == month]
+        if week and month:
+            df["week_in_month"] = df["date"].apply(_week_of_month_int)
+            df = df[df["week_in_month"] == week]
+
+        if df.empty:
+            return jsonify({"mode":"actual","year":year,"month":month,"week":week,"buckets":None,"data":[],"table":[], "last_actual": (str(LONG_DF["date"].max().date()) if not LONG_DF.empty else None)})
+
+        df["province"] = df["entity"].map(ENTITY_TO_PROVINCE)
+        df = df.dropna(subset=["province"]).copy()
+        df["island"] = df["province"].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
+
+        if island and island.lower() != "semua pulau":
+            df = df[df["island"].astype(str).str.lower() == island.strip().lower()]
+        if df.empty:
+            return jsonify({"mode":"actual","year":year,"month":month,"week":week,"buckets":None,"data":[],"table":[], "last_actual": (str(LONG_DF["date"].max().date()) if not LONG_DF.empty else None)})
+
+        # city stats (for table)
+        city_stats = df.groupby("entity").agg(mean_val=("value","mean"), min_val=("value","min"), max_val=("value","max"), cnt=("value","count")).reset_index().rename(columns={"entity":"city"})
+        # attach dates
+        min_dates = df.groupby("entity")["date"].min().reset_index().rename(columns={"entity":"city","date":"min_date"})
+        max_dates = df.groupby("entity")["date"].max().reset_index().rename(columns={"entity":"city","date":"max_date"})
+        city_stats = city_stats.merge(min_dates, on="city", how="left").merge(max_dates, on="city", how="left")
+        city_stats["province"] = city_stats["city"].map(ENTITY_TO_PROVINCE)
+        city_stats["island"] = city_stats["province"].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
+
+        # province values computed as mean(city_means)
+        prov_vals = city_stats.groupby("province").agg(value=("mean_val","mean"), n_cities=("city","nunique")).reset_index()
+        prov_vals["island"] = prov_vals["province"].str.upper().map(PROVINCE_TO_ISLAND)
+        prov_vals["value"] = prov_vals["value"].apply(_safe_float_or_none)
+
+        data_out = []
+        buckets_out = None
+
+        if bucket_scope == "island":
+            buckets_out = {}
+            for isl_name, group in prov_vals.groupby("island"):
+                vals = [v for v in group["value"].tolist() if v is not None]
+                if not vals:
+                    buckets_out[isl_name] = {"low": None, "mid": None}
+                    continue
+                try:
+                    q1_raw, q2_raw = np.quantile(np.array(vals), [1/3, 2/3])
+                except Exception:
+                    q1_raw = q2_raw = None
+                q1 = _safe_float_or_none(q1_raw)
+                q2 = _safe_float_or_none(q2_raw)
+                buckets_out[isl_name] = {"low": q1, "mid": q2}
+                def cat_local(v):
+                    if v is None or q1 is None: return "no-data"
+                    if v <= q1: return "low"
+                    if v <= q2: return "mid"
+                    return "high"
+                for r in group.itertuples(index=False):
+                    v = _safe_float_or_none(getattr(r, "value", None))
+                    data_out.append({"province": getattr(r, "province", None), "value": v, "category": cat_local(v), "n_cities": int(getattr(r, "n_cities", 0) or 0), "island": getattr(r, "island", None)})
+        else:
+            vals = [v for v in prov_vals["value"].tolist() if v is not None]
+            if vals:
+                try:
+                    q1_raw, q2_raw = np.quantile(np.array(vals), [1/3, 2/3])
+                except Exception:
+                    q1_raw = q2_raw = None
+            else:
+                q1_raw = q2_raw = None
+            q1 = _safe_float_or_none(q1_raw)
+            q2 = _safe_float_or_none(q2_raw)
+            buckets_out = {"low": q1, "mid": q2}
+            def cat_global(v):
+                if v is None or q1 is None: return "no-data"
                 if v <= q1: return "low"
                 if v <= q2: return "mid"
                 return "high"
+            for r in prov_vals.itertuples(index=False):
+                v = _safe_float_or_none(getattr(r, "value", None))
+                data_out.append({"province": getattr(r, "province", None), "value": v, "category": cat_global(v), "n_cities": int(getattr(r, "n_cities", 0) or 0), "island": getattr(r, "island", None)})
 
-            data = [
-                {"province": p["province"], "value": float(p["value"]), "category": cat(p["value"])}
-                for p in prov_list
-            ]
-            return jsonify({
-                "mode": "predicted",
-                "year": year,
-                "month": month,
-                "week": week,
-                "generated_at": pre.get("generated_at"),
-                "model_version": pre.get("model_version"),
-                "buckets": {"low": float(q1), "mid": float(q2)},
-                "data": data
-            })
-    else :
-        df = LONG_DF[["entity","date","value"]].copy()
-        df["date"] = df["date"].dt.normalize()
-        df["year"] = df["date"].dt.year
-        df = df[df["year"] == year]
-        if month:
-            df["month"] = df["date"].dt.month
-            df = df[df["month"] == month]
-        if week and month:
-            df["week_in_month"] = df["date"].apply(_week_of_month_int)
-            df = df[df["week_in_month"] == week]
+        last_actual = (str(LONG_DF["date"].max().date()) if not LONG_DF.empty else None)
 
-        if df.empty:
-            return jsonify({"data": [], "buckets": None, "last_actual": None})
+        table_rows = []
+        if include_table:
+            for r in city_stats.itertuples(index=False):
+                table_rows.append({
+                    "city": getattr(r, "city", None),
+                    "province": getattr(r, "province", None),
+                    "island": getattr(r, "island", None),
+                    "mean": _safe_float_or_none(getattr(r, "mean_val", None)),
+                    "min": _safe_float_or_none(getattr(r, "min_val", None)),
+                    "max": _safe_float_or_none(getattr(r, "max_val", None)),
+                    "min_date": (getattr(r,"min_date").date().isoformat() if getattr(r,"min_date",None) is not pd.NaT and getattr(r,"min_date",None) is not None else None),
+                    "max_date": (getattr(r,"max_date").date().isoformat() if getattr(r,"max_date",None) is not pd.NaT and getattr(r,"max_date",None) is not None else None),
+                    "count": int(getattr(r, "cnt", 0) or 0)
+                })
 
-        df["province"] = df["entity"].map(ENTITY_TO_PROVINCE)
-        df = df.dropna(subset=["province"]).copy()
-        df["island"] = df["province"].str.upper().map(PROVINCE_TO_ISLAND)
-
-        if island and island != "Semua Pulau":
-            df = df[df["island"] == island]
-        if df.empty:
-            return jsonify({"data": [], "buckets": None, "last_actual": None})
-
-        grp = df.groupby("province")["value"].mean().reset_index()
-        vals = grp["value"].values
-        q1, q2 = np.quantile(vals, [1/3, 2/3])
-
-        def cat(v):
-            if v <= q1: return "low"
-            if v <= q2: return "mid"
-            return "high"
-
-        data = [
-            {"province": r.province, "value": float(r.value), "category": cat(r.value)}
-            for r in grp.itertuples(index=False)
-        ]
-        last_actual = str(LONG_DF["date"].max().date())
-        return jsonify({
+        resp = {
             "mode": "actual",
+            "agg": "city_mean_then_province_mean",
+            "period": {"year": year, "month": month, "week": week},
+            "bucket_scope": bucket_scope,
             "last_actual": last_actual,
-            "buckets": {"low": float(q1), "mid": float(q2)},
-            "data": data
-        })
-        df = LONG_DF[["entity","date","value"]].copy()
-        df["date"] = df["date"].dt.normalize()
-        df["year"] = df["date"].dt.year
-        df = df[df["year"] == year]
-        if month:
-            df["month"] = df["date"].dt.month
-            df = df[df["month"] == month]
-        if week and month:
-            df["week_in_month"] = df["date"].apply(_week_of_month_int)
-            df = df[df["week_in_month"] == week]
+            "buckets": buckets_out,
+            "data": data_out,
+            "table": table_rows
+        }
+        probs = _find_non_json_numbers(resp)
+        if probs:
+            app.logger.warning("choropleth: found non-JSON-safe numeric values: %s", probs[:20])
 
-        if df.empty:
-            return jsonify({"data": [], "buckets": None, "last_actual": None})
+        # sanitize seluruh response (NaN/np.nan -> None, numpy scalars -> py types)
+        safe_resp = _sanitize_for_json(resp)
+        return jsonify(safe_resp)
+    except Exception as e:
+        app.logger.exception("api_choropleth unexpected error")
+        return jsonify({"error": "Gagal memproses choropleth", "detail": str(e)}), 500
 
-        df["province"] = df["entity"].map(ENTITY_TO_PROVINCE)
-        df = df.dropna(subset=["province"]).copy()
-        df["island"]   = df["province"].str.upper().map(PROVINCE_TO_ISLAND)
+# static geojson serving helper (optional)
+@app.route('/static/geo/<path:filename>')
+def static_geo(filename):
+    return send_from_directory('static/geo', filename)
 
-        if island and island != "Semua Pulau":
-            df = df[df["island"] == island]
-        if df.empty:
-            return jsonify({"data": [], "buckets": None, "last_actual": None})
-
-        grp = df.groupby("province")["value"].mean().reset_index()
-        vals = grp["value"].values
-        q1, q2 = np.quantile(vals, [1/3, 2/3])
-
-        def cat(v):
-            if v <= q1: return "low"
-            if v <= q2: return "mid"
-            return "high"
-
-        data = [{"province": r.province, "value": float(r.value), "category": cat(r.value)}
-                for r in grp.itertuples(index=False)]
-        last_actual = str(LONG_DF["date"].max().date())
-        return jsonify({"last_actual": last_actual, "buckets": {"low": float(q1), "mid": float(q2)}, "data": data})
 
 @app.route("/api/city_points")
 def api_city_points():
@@ -1520,6 +2132,36 @@ def api_predict_range():
     print(f"DEBUG result actual={len(actual_series)} predicted={len(predicted_series)}")
     summary_pred = _series_stats(predicted_series)
     summary_act  = _series_stats(actual_series)
+    
+        # === Tambahan: ambil evaluasi dari Excel dan gabungkan ke respons ===
+    eval_metrics = None
+    try:
+        eval_metrics = _load_eval_metrics(entity)
+        # Normalisasi angka supaya konsisten
+        if eval_metrics:
+            metrics = dict(eval_metrics)  # salin biar gak ubah cache
+            # pastikan numeric
+            for k in ["mae", "rmse", "mse", "mape", "r2"]:
+                if k in metrics and metrics[k] is not None:
+                    try:
+                        metrics[k] = float(metrics[k])
+                    except:
+                        metrics[k] = None
+
+            # MAPE kadang ditulis dalam %, ubah ke 0..1
+            if metrics.get("mape") and metrics["mape"] > 1.5:
+                metrics["mape"] = metrics["mape"] / 100.0
+
+            # Hitung MSE/RMSE jika salah satu kosong
+            if metrics.get("mse") is None and metrics.get("rmse") is not None:
+                metrics["mse"] = float(metrics["rmse"]) ** 2
+            if metrics.get("rmse") is None and metrics.get("mse") is not None:
+                metrics["rmse"] = float(metrics["mse"]) ** 0.5
+
+            eval_metrics = metrics
+    except Exception as e:
+        print("DEBUG eval attach error:", e)
+        eval_metrics = None
 
     return jsonify({
         "city": slug,
@@ -1680,71 +2322,6 @@ def api_eval_summary():
 
     return jsonify({"error": f"Evaluasi untuk kota '{q}' tidak ditemukan di Excel"}), 404
 
-# --- REPLACE endpoint lama /api/top5_cities dengan endpoint baru ini ---
-@app.route("/api/top_cities")
-def api_top_cities():
-    """
-    Ambil Top-N dari Excel ringkasan:
-      /api/top_cities?year=2024&order=desc&limit=5
-        - year  : wajib (angka)
-        - order : 'desc' (tertinggi) atau 'asc' (terendah). Default: desc
-        - limit : jumlah baris (default 5). Bisa > jumlah data tersedia.
-    """
-    year_s  = (request.args.get("year") or "").strip()
-    order   = (request.args.get("order") or "desc").strip().lower()
-    limit_s = (request.args.get("limit") or "5").strip()
-
-    if not year_s:
-        return jsonify({"error": "parameter year wajib"}), 400
-    try:
-        year = int(year_s)
-    except:
-        return jsonify({"error": "parameter year harus angka"}), 400
-
-    try:
-        limit = int(limit_s)
-        if limit <= 0: limit = 5
-    except:
-        limit = 5
-
-    asc = (order == "asc")
-
-    try:
-        df = _load_topn_df()
-    except Exception as e:
-        return jsonify({"error": f"Gagal membaca Excel TopN: {e}"}), 500
-
-    sub = df[df["year"] == year].copy()
-    if sub.empty:
-        return jsonify({"year": year, "order": order, "limit": limit, "data": []})
-
-    sub = sub.sort_values("avg", ascending=asc)
-    # hitung rank (1..n) sesuai urutan
-    sub["rank"] = range(1, len(sub) + 1)
-    if limit:
-        sub = sub.head(limit)
-
-    # formatting output
-    out = []
-    for r in sub.itertuples(index=False):
-        out.append({
-            "rank": int(r.rank),
-            "city": r.city,
-            "province": r.province,
-            "avg": None if pd.isna(r.avg) else float(r.avg),
-            "min": None if pd.isna(r.min) else float(r.min),
-            "max": None if pd.isna(r.max) else float(r.max),
-            "n":   None if pd.isna(r.n)   else int(r.n),
-        })
-
-    return jsonify({
-        "year": year,
-        "order": order,
-        "limit": limit,
-        "count": len(out),
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "data": out
-    })
 
 @app.route("/api/provinces")
 def api_provinces():
@@ -1755,34 +2332,9 @@ def api_provinces():
     except Exception as e:
         return jsonify({"error": f"Gagal baca provinsi: {e}"}), 500
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import math
-import time
-
-# --- Region summary (actual + predicted) ---
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
-
-# configuration (sesuaikan jika perlu)
-RC_PRED_MAX_WORKERS = 6        # parallelism (turunkan kalau mesin kecil)
-RC_PRED_HORIZON_LIMIT = 365    # batas hari maksimal (safety)
-RC_PRED_CACHE_TTL = 60         # detik, cache singkat per request burst
-
-# simple in-memory cache for predictions: {(entity,horizon,mode): {"ts":..., "preds":[{date,pred},...] }}
-_RC_PRED_CACHE = {}
 
 @app.route("/api/region_summary")
 def api_region_summary():
-    """
-    Extended region_summary:
-      - mode=island|province
-      - value=<name>
-      - optional filters: year, month, week (week only used if month set)
-      - predict=1 (optional) -> compute predicted summary for horizon days
-      - horizon=<days> (optional, default 30)
-      - naive_fallback=1|0 (optional) -> when model missing use last-actual flat
-      - model_mode=<test|level|...> forwarded to model loader/predict
-    """
     mode  = (request.args.get("mode") or "island").strip().lower()
     value = (request.args.get("value") or "").strip()
     predict = str(request.args.get("predict") or "0").strip()
@@ -1811,11 +2363,22 @@ def api_region_summary():
 
     do_predict = predict in ("1","true","yes")
     naive_fallback = naive_fallback in ("1","true","yes")
+    # init containers early
+    results = {}
+    errors = {}
+
     if horizon <= 0 or horizon > RC_PRED_HORIZON_LIMIT:
         return jsonify({"error": f"horizon harus antara 1 dan {RC_PRED_HORIZON_LIMIT} hari"}), 400
 
     try:
-        # prepare base df
+        page = int(request.args.get("page") or 1)
+        page_size = int(request.args.get("page_size") or 50)
+    except:
+        return jsonify({"error":"page & page_size harus integer"}), 400
+    if page < 1: page = 1
+    page_size = max(1, min(page_size, 200))
+
+    try:
         df = LONG_DF[["entity","date","value"]].copy()
         df["date"] = pd.to_datetime(df["date"]).dt.normalize()
         df = df.dropna(subset=["entity","date","value"])
@@ -1824,18 +2387,17 @@ def api_region_summary():
         df["island"] = df["province"].str.upper().map(PROVINCE_TO_ISLAND)
         df["city"] = df["entity"]
 
-        # --- apply date filters BEFORE aggregating ---
+        # --- keep a full copy of the dataframe BEFORE applying year/month/week filters
+        full_df = df.copy()  # CHANGED: keep full history for things that should use full data
+
         if year is not None:
             df = df[df["date"].dt.year == year]
         if month is not None:
             df = df[df["date"].dt.month == month]
         if week is not None and month is not None:
-            # _week_of_month_int must exist in scope (same helper used elsewhere)
             df["week_in_month"] = df["date"].apply(_week_of_month_int)
             df = df[df["week_in_month"] == week]
-        # --- end date filters ---
 
-        # filter selection by island/province
         if mode == "island":
             if value.lower() == "semua pulau":
                 sub = df.copy()
@@ -1844,97 +2406,139 @@ def api_region_summary():
         else:
             sub = df[df["province"].str.casefold() == value.casefold()].copy()
 
+        # if the filtered sub is empty, nothing to show for that time/window
         if sub.empty:
             return jsonify({"mode": mode, "value": value, "count": 0, "rows": []})
 
-        # collect unique cities to process
-        cities = sorted(sub["city"].unique())
+        # Normalisasi cities: unique, trimmed strings (eliminates weird types/empty)
+        cities = sorted({ str(x).strip() for x in sub["city"].unique() if pd.notna(x) and str(x).strip() })
+        total_cities = len(cities)
 
-        # baseline actual stats per city (min/max, dates, monthly avg high/low)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_cities = cities[start:end] if start < total_cities else []
+
         rows = []
-        # precompute monthly avg for actuals if needed
         sub["year"] = sub["date"].dt.year
         sub["month"] = sub["date"].dt.month
         monthly = sub.groupby(["city","year","month"])["value"].mean().reset_index(name="month_avg")
 
-        # create dicts for quick lookup of actual min/max
-        min_idx = sub.groupby("city")["value"].idxmin()
-        max_idx = sub.groupby("city")["value"].idxmax()
+        # precompute min/max idx safely (only for cities present in the filtered sub)
+        try:
+            min_idx = sub.groupby("city")["value"].idxmin()
+            max_idx = sub.groupby("city")["value"].idxmax()
+        except Exception:
+            min_idx = {}
+            max_idx = {}
 
-        # Helper to get predicted series for an entity
+        # helper predict (unchanged)
         def _get_pred_for_entity(entity, horizon_days, model_mode_local):
             key = (entity, horizon_days, model_mode_local)
             now = time.time()
             cached = _RC_PRED_CACHE.get(key)
             if cached and now - cached["ts"] < RC_PRED_CACHE_TTL:
                 return cached["preds"]
-            # may raise FileNotFoundError if model not present
             preds = _recursive_predict(entity, days=horizon_days, mode=model_mode_local)
             normalized = []
             for p in preds:
                 try:
-                    normalized.append({"date": pd.to_datetime(p["date"]).normalize(), "pred": float(p["pred"])})
+                    normalized.append({"date": pd.to_datetime(p["date"]).normalize(), "pred": float(p["pred"])} )
                 except Exception:
                     pass
             _RC_PRED_CACHE[key] = {"ts": now, "preds": normalized}
             return normalized
 
-        # If not predicting, return actual summary only
+        # --- non-predict: build rows for this page slice ---
         if not do_predict:
-            for i, city in enumerate(cities, start=1):
-                g = sub[sub["city"] == city].sort_values("date")
-                # safe access for min/max
+            for offset_idx, city in enumerate(page_cities, start=start+1):
                 try:
-                    minr = g.loc[min_idx[city]]
-                    maxr = g.loc[max_idx[city]]
-                    min_value = float(minr["value"]); min_date = minr["date"].date().isoformat()
-                    max_value = float(maxr["value"]); max_date = maxr["date"].date().isoformat()
-                except Exception:
+                    # g: data LIMITED to the selected period (year/month/week) — used for stats
+                    g = sub[sub["city"].astype(str).str.strip() == city].sort_values("date")
+                    if g.empty:
+                        app.logger.debug("city not found in sub df: %s", city)
+                        continue
+
+                    # g_all: full history for this city (used for last_actual / global lookups)
+                    g_all = full_df[full_df["city"].astype(str).str.strip() == city].sort_values("date")  # CHANGED
                     min_value = min_date = max_value = max_date = None
 
-                # monthly high/low
-                mm = monthly[monthly["city"] == city]
-                if not mm.empty:
-                    idxh = mm["month_avg"].idxmax()
-                    idxl = mm["month_avg"].idxmin()
-                    high_row = mm.loc[idxh]; low_row = mm.loc[idxl]
-                    avg_month_high = float(high_row["month_avg"])
-                    avg_month_high_month = int(high_row["month"])
-                    avg_month_high_year = int(high_row["year"])
-                    avg_month_low  = float(low_row["month_avg"])
-                    avg_month_low_month = int(low_row["month"])
-                    avg_month_low_year  = int(low_row["year"])
-                else:
-                    avg_month_high = avg_month_high_month = avg_month_high_year = None
-                    avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
 
-                rows.append({
-                    "no": i,
-                    "city": city,
-                    "province": g["province"].iloc[0],
-                    "island": g["island"].iloc[0],
-                    "min_value": min_value,
-                    "min_date": min_date,
-                    "max_value": max_value,
-                    "max_date": max_date,
-                    "avg_month_high": avg_month_high,
-                    "avg_month_high_month": avg_month_high_month,
-                    "avg_month_high_year": avg_month_high_year,
-                    "avg_month_low": avg_month_low,
-                    "avg_month_low_month": avg_month_low_month,
-                    "avg_month_low_year": avg_month_low_year,
-                })
-            return jsonify({"mode": mode, "value": value, "count": len(rows), "rows": rows})
+                    try:
+                        idx_min_local = g["value"].idxmin()
+                        minr = g.loc[idx_min_local]
+                        min_value = float(minr["value"]); min_date = minr["date"].date().isoformat()
+                    except Exception:
+                        min_value = min_date = None
 
-        # ===== Predict mode =====
-        results = {}  # city -> preds list
-        errors = {}
+                    # safe min/max computed from g (i.e. limited to the requested period)
+                    try:
+                        idx_max_local = g["value"].idxmax()
+                        maxr = g.loc[idx_max_local]
+                        max_value = float(maxr["value"]); max_date = maxr["date"].date().isoformat()
+                    except Exception:
+                        max_value = max_date = None
 
-        # submit prediction tasks in parallel
+                    
+                    mm_local = pd.DataFrame()
+                    try:
+                        mm_local = g.groupby([g["date"].dt.year.rename("year"), g["date"].dt.month.rename("month")])["value"].mean().reset_index(name="month_avg")
+                    except Exception:
+                        mm_local = pd.DataFrame()
+
+                    if not mm_local.empty:
+                        try:
+                            idxh = mm_local["month_avg"].idxmax()
+                            idxl = mm_local["month_avg"].idxmin()
+                            high_row = mm_local.loc[idxh]; low_row = mm_local.loc[idxl]
+                            avg_month_high = float(high_row["month_avg"])
+                            avg_month_high_month = int(high_row["month"])
+                            avg_month_high_year = int(high_row["year"])
+                            avg_month_low  = float(low_row["month_avg"])
+                            avg_month_low_month = int(low_row["month"])
+                            avg_month_low_year  = int(low_row["year"])
+                        except Exception:
+                            avg_month_high = avg_month_high_month = avg_month_high_year = None
+                            avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
+                    else:
+                        avg_month_high = avg_month_high_month = avg_month_high_year = None
+                        avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
+
+                    
+                    rows.append({
+                        "no": offset_idx,
+                        "city": city,
+                        "province": g["province"].iloc[0],
+                        "island": g["island"].iloc[0],
+                        "min_value": min_value,
+                        "min_date": min_date,
+                        "max_value": max_value,
+                        "max_date": max_date,
+                        "avg_month_high": avg_month_high,
+                        "avg_month_high_month": avg_month_high_month,
+                        "avg_month_high_year": avg_month_high_year,
+                        "avg_month_low": avg_month_low,
+                        "avg_month_low_month": avg_month_low_month,
+                        "avg_month_low_year": avg_month_low_year,
+                    })
+                except Exception as e:
+                    app.logger.exception("failed building non-predict row for city %s: %s", city, e)
+                    continue
+
+            safe_rows = [_sanitize_for_json(r) for r in rows]
+            return jsonify({
+                "mode": mode,
+                "value": value,
+                "count": int(total_cities),
+                "page": int(page),
+                "page_size": int(page_size),
+                "rows": safe_rows,
+                "predict": False
+            })
+
+        # --- predict mode: request predictions only for page_cities ---
+        # submit prediction tasks only for cities in this page
         with ThreadPoolExecutor(max_workers=RC_PRED_MAX_WORKERS) as ex:
-            futs = {}
-            for city in cities:
-                futs[ex.submit(_get_pred_for_entity, city, horizon, model_mode)] = city
+            futs = { ex.submit(_get_pred_for_entity, city, horizon, model_mode): city for city in page_cities }
             for fut in as_completed(futs):
                 city = futs[fut]
                 try:
@@ -1945,95 +2549,115 @@ def api_region_summary():
                 except Exception as e:
                     errors[city] = str(e)
 
-        # build rows combining actual metadata + predicted summary
-        for i, city in enumerate(cities, start=1):
-            g = sub[sub["city"] == city].sort_values("date")
-            prov = g["province"].iloc[0]
-            isl = g["island"].iloc[0]
-            # last actual date/value (use LAST_ACTUAL mapping if available)
-            last_actual_dt = LAST_ACTUAL.get(city, g["date"].max().normalize())
-            if (last_actual_dt is not None) and ((g["date"] == last_actual_dt).any()):
-                last_actual_val = float(g.loc[g["date"] == last_actual_dt, "value"].iloc[0])
-            else:
-                last_actual_val = float(g["value"].iloc[-1]) if not g.empty else None
-
-            # actual min/max safe
+        # build predict rows for page_cities
+        for offset_idx, city in enumerate(page_cities, start=start+1):
             try:
-                minr = g.loc[min_idx[city]]
-                maxr = g.loc[max_idx[city]]
-                min_value = float(minr["value"]); min_date = minr["date"].date().isoformat()
-                max_value = float(maxr["value"]); max_date = maxr["date"].date().isoformat()
-            except Exception:
-                min_value = min_date = max_value = max_date = None
+                # g: data LIMITED to the selected period (used for stats)
+                g = sub[sub["city"].astype(str).str.strip() == city].sort_values("date")
+                if g.empty:
+                    app.logger.debug("city not found in sub (predict): %s", city)
+                    continue
 
-            # predicted summary
-            pred_list = results.get(city)
-            pred_count = 0
-            pred_avg = pred_min = pred_max = pred_min_date = pred_max_date = None
+                # g_all: full history for this city (used for last_actual/backfill)
+                g_all = full_df[full_df["city"].astype(str).str.strip() == city].sort_values("date")  # CHANGED
 
-            if pred_list is None:
-                if errors.get(city) == "model_not_found" and naive_fallback:
-                    # naive flat horizon using last_actual_val
-                    if last_actual_val is not None:
-                        pred_count = horizon
-                        pred_vals = [last_actual_val] * horizon
-                        pred_dates = [ (last_actual_dt + pd.Timedelta(days=d+1)).date() for d in range(horizon) ]
-                        pred_avg = float(sum(pred_vals)/len(pred_vals))
-                        pred_min = float(min(pred_vals)); pred_max = float(max(pred_vals))
-                        pred_min_date = pred_dates[0].isoformat() if pred_dates else None
-                        pred_max_date = pred_dates[-1].isoformat() if pred_dates else None
+                prov = g["province"].iloc[0]
+                isl = g["island"].iloc[0]
+
+                # last actual: prefer LAST_ACTUAL override, otherwise use full history's latest date/value
+                last_actual_dt = LAST_ACTUAL.get(city, (g_all["date"].max().normalize() if not g_all.empty else g["date"].max().normalize()))
+                if (last_actual_dt is not None) and ((g_all["date"] == last_actual_dt).any()):
+                    last_actual_val = float(g_all.loc[g_all["date"] == last_actual_dt, "value"].iloc[0])
+                else:
+                    last_actual_val = float(g_all["value"].iloc[-1]) if not g_all.empty else (float(g["value"].iloc[-1]) if not g.empty else None)
+
+                # actual safe min/max: use g (i.e., limited to requested period)
+                try:
+                    minr = g.loc[min_idx[city]]
+                    maxr = g.loc[max_idx[city]]
+                    min_value = float(minr["value"]); min_date = minr["date"].date().isoformat()
+                    max_value = float(maxr["value"]); max_date = maxr["date"].date().isoformat()
+                except Exception:
+                    min_value = min_date = max_value = max_date = None
+
+                # predictions handling unchanged...
+                pred_list = results.get(city)
+                pred_count = pred_avg = pred_min = pred_max = pred_min_date = pred_max_date = None
+
+                if pred_list is None:
+                    if errors.get(city) == "model_not_found" and naive_fallback:
+                        if last_actual_val is not None:
+                            pred_count = horizon
+                            pred_vals = [last_actual_val] * horizon
+                            pred_dates = [ (last_actual_dt + pd.Timedelta(days=d+1)).date() for d in range(horizon) ]
+                            pred_avg = float(sum(pred_vals)/len(pred_vals))
+                            pred_min = float(min(pred_vals)); pred_max = float(max(pred_vals))
+                            pred_min_date = pred_dates[0].isoformat() if pred_dates else None
+                            pred_max_date = pred_dates[-1].isoformat() if pred_dates else None
+                        else:
+                            pred_count = 0
                     else:
                         pred_count = 0
                 else:
-                    pred_count = 0
-            else:
-                vals = [p["pred"] for p in pred_list if p.get("pred") is not None]
-                dates = [pd.to_datetime(p["date"]).date() for p in pred_list]
-                if vals:
-                    pred_count = len(vals)
-                    pred_avg = float(sum(vals)/len(vals))
-                    idx_min = int(min(range(len(vals)), key=lambda k: vals[k]))
-                    idx_max = int(max(range(len(vals)), key=lambda k: vals[k]))
-                    pred_min = float(vals[idx_min]); pred_min_date = dates[idx_min].isoformat()
-                    pred_max = float(vals[idx_max]); pred_max_date = dates[idx_max].isoformat()
+                    vals = [p["pred"] for p in pred_list if p.get("pred") is not None]
+                    dates = [pd.to_datetime(p["date"]).date() for p in pred_list]
+                    if vals:
+                        pred_count = len(vals)
+                        pred_avg = float(sum(vals)/len(vals))
+                        idx_min = int(min(range(len(vals)), key=lambda k: vals[k]))
+                        idx_max = int(max(range(len(vals)), key=lambda k: vals[k]))
+                        pred_min = float(vals[idx_min]); pred_min_date = dates[idx_min].isoformat()
+                        pred_max = float(vals[idx_max]); pred_max_date = dates[idx_max].isoformat()
 
-            # monthly actual high/low (same as actual endpoint)
-            mm = monthly[monthly["city"] == city]
-            if not mm.empty:
-                idxh = mm["month_avg"].idxmax(); idxl = mm["month_avg"].idxmin()
-                high_row = mm.loc[idxh]; low_row = mm.loc[idxl]
-                avg_month_high = float(high_row["month_avg"]); avg_month_high_month = int(high_row["month"]); avg_month_high_year = int(high_row["year"])
-                avg_month_low  = float(low_row["month_avg"]);  avg_month_low_month = int(low_row["month"]);  avg_month_low_year = int(low_row["year"])
-            else:
-                avg_month_high = avg_month_high_month = avg_month_high_year = None
-                avg_month_low = avg_month_low_month = avg_month_low_year = None
+                mm = monthly[monthly["city"] == city]
+                if not mm.empty:
+                    idxh = mm["month_avg"].idxmax(); idxl = mm["month_avg"].idxmin()
+                    high_row = mm.loc[idxh]; low_row = mm.loc[idxl]
+                    avg_month_high = float(high_row["month_avg"]); avg_month_high_month = int(high_row["month"]); avg_month_high_year = int(high_row["year"])
+                    avg_month_low  = float(low_row["month_avg"]);  avg_month_low_month = int(low_row["month"]);  avg_month_low_year = int(low_row["year"])
+                else:
+                    avg_month_high = avg_month_high_month = avg_month_high_year = None
+                    avg_month_low = avg_month_low_month = avg_month_low_year = None
 
-            rows.append({
-                "no": i,
-                "city": city,
-                "province": prov,
-                "island": isl,
-                # actuals
-                "min_value": min_value, "min_date": min_date,
-                "max_value": max_value, "max_date": max_date,
-                # actual monthly stats
-                "avg_month_high": avg_month_high, "avg_month_high_month": avg_month_high_month, "avg_month_high_year": avg_month_high_year,
-                "avg_month_low": avg_month_low, "avg_month_low_month": avg_month_low_month, "avg_month_low_year": avg_month_low_year,
-                # predicted summary
-                "pred_count": int(pred_count),
-                "pred_avg": (None if pred_avg is None else float(pred_avg)),
-                "pred_min": pred_min, "pred_min_date": pred_min_date,
-                "pred_max": pred_max, "pred_max_date": pred_max_date,
-                "last_actual_date": (last_actual_dt.date().isoformat() if last_actual_dt is not None else None),
-                "last_actual_value": (last_actual_val if last_actual_val is not None else None)
-            })
+                rows.append({
+                    "no": offset_idx,
+                    "city": city,
+                    "province": prov,
+                    "island": isl,
+                    "min_value": min_value, "min_date": min_date,
+                    "max_value": max_value, "max_date": max_date,
+                    "avg_month_high": avg_month_high, "avg_month_high_month": avg_month_high_month, "avg_month_high_year": avg_month_high_year,
+                    "avg_month_low": avg_month_low, "avg_month_low_month": avg_month_low_month, "avg_month_low_year": avg_month_low_year,
+                    "pred_count": int(pred_count) if pred_count is not None else 0,
+                    "pred_avg": (None if pred_avg is None else float(pred_avg)),
+                    "pred_min": pred_min, "pred_min_date": pred_min_date,
+                    "pred_max": pred_max, "pred_max_date": pred_max_date,
+                    "last_actual_date": (last_actual_dt.date().isoformat() if last_actual_dt is not None else None),
+                    "last_actual_value": (last_actual_val if last_actual_val is not None else None)
+                })
+            except Exception as e:
+                app.logger.exception("failed building predict row for city %s: %s", city, e)
+                continue
 
-        # return combined response
-        return jsonify({"mode": mode, "value": value, "count": len(rows), "rows": rows, "predict": True, "horizon_days": horizon, "naive_fallback": naive_fallback, "errors": errors})
+        safe_rows = [_sanitize_for_json(r) for r in rows]
+        safe_errors = _sanitize_for_json(errors)
+        return jsonify({
+            "mode": mode,
+            "value": value,
+            "count": int(total_cities),
+            "page": int(page),
+            "page_size": int(page_size),
+            "rows": safe_rows,
+            "predict": True,
+            "horizon_days": int(horizon),
+            "naive_fallback": bool(naive_fallback),
+            "errors": safe_errors
+        })
 
     except Exception as e:
         app.logger.exception("api_region_summary failed")
         return jsonify({"error": f"Gagal memproses: {e}"}), 500
+
 
 
 @app.route("/api/quick_predict")
@@ -2369,7 +2993,7 @@ def upload_train_one_city(series_full: pd.Series, city_name: str, outdir: Path, 
     pack_path = best_dir / f"{city_safe}__{best_record['exp_name']}__best_pack.joblib"
     joblib.dump(pack, pack_path)
 
-    preds = upload_iterative_forecast_from_pack(pack, series_full, horizons=[1, 7, 10])
+    preds = upload_iterative_forecast_from_pack(pack, series_full, horizons=list(range(1, 31)))
 
     return {
         "city": city_name,
@@ -2520,61 +3144,41 @@ def read_tabular_file(path: Path):
 
 
 
+
+def _fmt_rp(v):
+    try:
+        return "Rp " + f"{int(round(float(v))):,}".replace(",", ".")
+    except Exception:
+        return str(v)
+
 def generate_pdf_evaluation(city_name: str, result: dict, output_dir: Path):
     """
-    Membuat file PDF berjudul 'Evaluasi - <Kota>' berisi hasil training/prediksi.
-    Output: Path PDF yang dihasilkan (atau None jika gagal)
-
-    city_name : nama kota (str)
-    result    : dict hasil training, contoh:
-                {
-                  'best_r2': 0.92,
-                  'test_days': 30,
-                  'n_total': 180,
-                  'metrics': {'r2':0.92, 'mae':150, 'best_params': {...}},
-                  'predictions': {'1':{'date':'2025-10-18','value':14500}, ...},
-                  'trend': {'dates':[...], 'values':[...]}
-                }
-    output_dir: folder untuk menyimpan file PDF
+    PDF: EVALUASI — <city>
+    - Menampilkan metrik dan prediksi horizon 1..30
+    - Format prediksi: TGL — Rp X.XXX
+    - Dua kolom, auto-paginasi
     """
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
         city_safe = str(city_name).replace('/', '_').replace('\\', '_').strip()
         pdf_path = output_dir / f"{city_safe}__evaluasi.pdf"
 
-        # optional: buat plot tren jika ada
-        trend_png = None
-        try:
-            trend = result.get('trend')
-            if trend and trend.get('dates') and trend.get('values'):
-                png_path = output_dir / f"{city_safe}__trend.png"
-                plt.figure(figsize=(6, 3))
-                plt.plot(trend['dates'], trend['values'], marker='o', linewidth=1)
-                plt.title(f"Trend Harga - {city_safe}")
-                plt.xlabel("Tanggal")
-                plt.ylabel("Harga (Rp)")
-                plt.xticks(rotation=45)
-                plt.tight_layout()
-                plt.savefig(png_path)
-                plt.close()
-                trend_png = png_path
-        except Exception as e:
-            print(f"[WARN] gagal buat trend chart untuk {city_safe}: {e}")
-
-        # mulai buat PDF
+        # Start PDF
         c = canvas.Canvas(str(pdf_path), pagesize=A4)
         w, h = A4
-        y = h - 2 * cm
+        top_y = h - 2 * cm
+        y = top_y
 
-        # ===== HEADER =====
+        # Title
         c.setFont("Helvetica-Bold", 18)
         c.drawString(2 * cm, y, f"EVALUASI — {city_safe}")
         y -= 1.2 * cm
-        c.setFont("Helvetica", 10)
-        c.drawString(2 * cm, y, f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        c.setFont("Helvetica", 9)
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        c.drawString(2 * cm, y, f"Generated: {timestamp}")
         y -= 0.8 * cm
 
-        # ===== INFORMASI DASAR =====
+        # Basic info
         n_total = result.get("n_total", "-")
         test_days = result.get("test_days", "-")
         best_r2 = result.get("best_r2", "-")
@@ -2589,51 +3193,98 @@ def generate_pdf_evaluation(city_name: str, result: dict, output_dir: Path):
         c.drawString(2.2 * cm, y, f"Best R²: {best_r2}")
         y -= 0.8 * cm
 
-        # ===== METRIK =====
+        # Metrics
         metrics = result.get("metrics", {})
         if metrics:
             c.setFont("Helvetica-Bold", 12)
             c.drawString(2 * cm, y, "Metrik Evaluasi")
             y -= 0.6 * cm
             c.setFont("Helvetica", 10)
-            for k, v in metrics.items():
-                if isinstance(v, (dict, list)):  # lewati struktur kompleks
-                    continue
-                c.drawString(2.2 * cm, y, f"{k}: {v}")
-                y -= 0.4 * cm
-            y -= 0.5 * cm
+            for k in ("r2", "mae", "cv_best_r2", "train_time_seconds"):
+                if k in metrics:
+                    c.drawString(2.2 * cm, y, f"{k}: {metrics.get(k)}")
+                    y -= 0.4 * cm
+            y -= 0.3 * cm
 
-        # ===== PREDIKSI =====
-        preds = result.get("predictions", {})
-        if preds:
-            c.setFont("Helvetica-Bold", 12)
-            c.drawString(2 * cm, y, "Prediksi")
-            y -= 0.6 * cm
-            c.setFont("Helvetica", 10)
-            for horizon, v in preds.items():
-                if isinstance(v, dict):
-                    val = v.get("value", "-")
-                    date = v.get("date", "-")
-                else:
-                    val = v
-                    date = "-"
-                c.drawString(2.2 * cm, y, f"Horizon {horizon}: {val} (tgl: {date})")
-                y -= 0.4 * cm
-            y -= 0.6 * cm
+        # Predictions: prefer result['predictions'], otherwise try others
+        preds = result.get("predictions") or result.get("predictions_full") or {}
+        # Normalize keys to integers
+        normalized = {}
+        for k, v in preds.items():
+            try:
+                ik = int(str(k).strip())
+            except Exception:
+                # try extract digits
+                digits = ''.join(filter(str.isdigit, str(k)))
+                ik = int(digits) if digits else k
+            normalized[int(ik) if isinstance(ik, int) else ik] = v
 
-        # ===== TREND CHART =====
-        if trend_png and trend_png.exists():
-            img_w = w - 4 * cm
-            img_h = img_w * 0.4
-            if y - img_h < 3 * cm:  # kalau kurang ruang → halaman baru
+        # Build horizon list 1..30
+        horizons = list(range(1, 31))
+
+        # Header for predictions
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(2 * cm, y, "Perkiraan Harga Minyak Goreng (30 hari terakhir)")
+        y -= 0.6 * cm
+
+        # Layout two columns
+        left_x = 2.2 * cm
+        right_x = w / 2 + 0.5 * cm
+        line_h = 0.5 * cm
+        # Start row y
+        start_y = y
+
+        # Prepare rows as list of strings like "2025-07-02 — Rp 21.352"
+        rows = []
+        for h in horizons:
+            v = normalized.get(h)
+            if isinstance(v, dict):
+                date = v.get("date", "-")
+                val = v.get("value", "-")
+            else:
+                # If preds keyed differently (e.g. 'pred_1d'), try fallback access
+                date = "-"
+                val = v if v is not None else "-"
+            # format
+            date_str = str(date) if date is not None else "-"
+            val_str = _fmt_rp(val)
+            rows.append((h, f"{date_str} — {val_str}"))
+
+        # Draw rows in two columns, ascending order
+        col = 0
+        row_index = 0
+        for idx, (horizon, text) in enumerate(rows):
+            col = idx % 2  # 0 left, 1 right
+            row_index = idx // 2
+            cur_y = start_y - row_index * line_h
+            # if not enough space on page, add new page and reset
+            if cur_y < 3 * cm:
                 c.showPage()
-                y = h - 3 * cm
-            c.drawImage(ImageReader(str(trend_png)), 2 * cm, y - img_h, width=img_w, height=img_h)
-            y -= img_h + 0.5 * cm
+                # redraw header & title on new page for clarity
+                c.setFont("Helvetica-Bold", 12)
+                c.drawString(2 * cm, h - 2 * cm, f"EVALUASI — {city_safe}")
+                c.setFont("Helvetica-Bold", 12)
+                c.drawString(2 * cm, h - 3 * cm, "Prediksi (lanjutan)")
+                start_y = h - 3.8 * cm
+                cur_y = start_y
+                # reset row_index relative to new page
+                row_index = 0
+                # recompute positions for this item after page break
+                # we place current item at start_y (left column)
+            x = left_x if col == 0 else right_x
+            # prepend horizon label e.g. "1d: " optionally — user wanted date first, so we write date — value
+            # but include small horizon label in parentheses to keep clarity
+            display = f"{text}    ({horizon}d)"
+            c.setFont("Helvetica", 10)
+            c.drawString(x, cur_y, display)
+        # after drawing predictions, set y to below the drawn block
+        # compute how many physical rows were used (pairs)
+        used_rows = ((len(rows) + 1) // 2)
+        y = start_y - used_rows * line_h - 0.6 * cm
 
-        # ===== FOOTER =====
+        # Footer
         c.setFont("Helvetica-Oblique", 8)
-        c.drawString(2 * cm, 1.5 * cm, f"Generated by system — {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        c.drawString(2 * cm, 1.5 * cm, f"Generated by system — {timestamp}")
 
         c.save()
         print(f"[PDF] generated: {pdf_path}")
@@ -2642,7 +3293,6 @@ def generate_pdf_evaluation(city_name: str, result: dict, output_dir: Path):
     except Exception as e:
         print("[ERROR] generate_pdf_evaluation:", e, traceback.format_exc())
         return None
-
 @app.route('/api/upload_file', methods=['POST'])
 def api_upload_file():
     """
@@ -2756,6 +3406,11 @@ def api_upload_file():
                     # === Generate PDF evaluasi otomatis ===
                     try:
                         pdf_path = generate_pdf_evaluation(city, res, outdir)
+                        print("[DEBUG] pdf_path:", pdf_path)
+                        print("[DEBUG] pdf exists?:", pdf_path.exists() if pdf_path is not None else "None")
+                        print("[DEBUG] UPLOAD_BASE:", UPLOAD_BASE.resolve())
+                        for p in UPLOAD_BASE.rglob('*evaluasi.pdf'):
+                            print("[FOUND UNDER UPLOAD_BASE]", p)
                         if pdf_path and pdf_path.exists():
                             # Buat URL download-nya biar bisa diakses dari frontend
                             rel_path = pdf_path.relative_to(UPLOAD_BASE)
@@ -2802,6 +3457,22 @@ def api_upload_file():
     except Exception as exc:
         current_app.logger.exception("upload_file failed")
         return jsonify({"error":"internal server error", "detail": str(exc), "trace": traceback.format_exc()}), 500
+from flask import send_file, abort, current_app
+
+@app.route('/uploads/<path:filename>')
+def serve_uploads(filename):
+    try:
+        base = UPLOAD_BASE.resolve()
+        target = (base / filename).resolve()
+        # security: pastikan target di bawah base
+        if not str(target).startswith(str(base)):
+            abort(403)
+        if not target.exists():
+            abort(404)
+        return send_file(str(target), as_attachment=True)
+    except Exception:
+        current_app.logger.exception("serve_uploads error")
+        abort(500)
 
 
 # ---------- route ----------
@@ -2811,5 +3482,6 @@ def api_upload_file():
 # =======================
 if __name__ == "__main__":
     print(">> Starting server on http://localhost:5000")
+# --- robust normalize df_c & compute city_stats (replace existing block) ---
     app.run(host="0.0.0.0", port=5000, debug=True)
 
