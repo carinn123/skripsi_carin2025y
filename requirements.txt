@@ -4,11 +4,15 @@ pandas
 numpy
 scikit-learn
 joblib
-openpyxl     # untuk baca Excel (dataset_filled_ffill_bfill.xlsx)
-xlrd         # fallback reader Excel (opsional, tapi sering dibutuhkan)
-geopandas 
-rapidfuzz 
+openpyxl
+xlrd
+geopandas
+rapidfuzz
 shapely
 fiona
 pyproj
 rtree
+reportlab        # untuk PDF export
+matplotlib       # untuk grafik
+jinja2           # dependency Flask (safe to list)
+werkzeug         # dependency Flask (safe to list)
