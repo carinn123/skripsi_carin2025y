@@ -9,6 +9,8 @@ import calendar
 import time
 import hashlib
 import sys
+from app import LONG_DF, LAST_ACTUAL, ENTITY_TO_PROVINCE, PROVINCE_TO_ISLAND, _recursive_predict, _week_of_month_int
+
 import os
 
 LOG = logging.getLogger("precompute_pack")
@@ -16,8 +18,8 @@ logging.basicConfig(level=logging.INFO)
 
 # --------- CONFIG ---------
 # Windows path to your models folder (you gave this)
-MODELS_DIR = Path(r"C:\Users\ASUS\skripsi_carin\pack")
-OUT_DIR = Path("static/data")
+MODELS_DIR = Path(r"C:\Users\ASUS\skripsi_carin\models")
+OUT_DIR = Path("static/data_01")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_WORKERS = 4            # mulai konservatif (naikkan jika mesin punya banyak CPU/RAM)
@@ -129,33 +131,54 @@ def build_series_for_entity(entity, preds):
     return combined
 
 def agg_series_to_maps(series_by_entity):
+    """
+    Menghasilkan mapping:
+      month_map[(year,month)] -> dict(entity -> {"province":..., "island":..., "value":...})
+      week_map[(year,month,week)] -> dict(entity -> {"province":..., "island":..., "value":...})
+    """
     rows = []
     for ent, ser in series_by_entity.items():
-        if ser is None or ser.empty: continue
-        for d,v in ser.items():
+        if ser is None or ser.empty:
+            continue
+        for d, v in ser.items():
             rows.append({"entity": ent, "date": d, "value": float(v)})
     if not rows:
         return {}, {}
+
     dfall = pd.DataFrame(rows)
     dfall["year"] = dfall["date"].dt.year
     dfall["month"] = dfall["date"].dt.month
     dfall["week_in_month"] = dfall["date"].apply(_week_of_month_int)
+
+    # mapping entity -> province (menggunakan ENTITY_TO_PROVINCE)
     mapping = pd.DataFrame({"entity": list(ENTITY_TO_PROVINCE.keys()), "province": list(ENTITY_TO_PROVINCE.values())})
     dfall = dfall.merge(mapping, on="entity", how="left")
     dfall = dfall.dropna(subset=["province"])
+
+    # tambahkan kolom island berdasarkan province (jaga case keys)
+    def prov_to_island(p):
+        if p is None: return None
+        # PROVINCE_TO_ISLAND keys mungkin uppercase; coba beberapa bentuk
+        return PROVINCE_TO_ISLAND.get(p) or PROVINCE_TO_ISLAND.get(p.upper()) or PROVINCE_TO_ISLAND.get(p.title())
+
+    dfall["island"] = dfall["province"].apply(prov_to_island)
+
+    # group per entity untuk tiap year/month (mengambil rata2)
     month_map = {}
-    week_map = {}
-    grp_m = dfall.groupby(["year","month","province"])["value"].mean().reset_index()
+    grp_m = dfall.groupby(["year","month","entity","province","island"])["value"].mean().reset_index()
     for (y,m), g in grp_m.groupby(["year","month"]):
         key = (int(y), int(m))
-        month_map[key] = {row.province: float(row.value) for row in g.itertuples(index=False)}
+        # buat dict entity -> {province,island,value}
+        month_map[key] = {row.entity: {"province": row.province, "island": row.island, "value": float(row.value)} for row in g.itertuples(index=False)}
+
+    week_map = {}
     if HAVE_WEEK_FILES:
-        grp_w = dfall.groupby(["year","month","week_in_month","province"])["value"].mean().reset_index()
+        grp_w = dfall.groupby(["year","month","week_in_month","entity","province","island"])["value"].mean().reset_index()
         for (y,m,w), g in grp_w.groupby(["year","month","week_in_month"]):
             key = (int(y), int(m), int(w))
-            week_map[key] = {row.province: float(row.value) for row in g.itertuples(index=False)}
-    return month_map, week_map
+            week_map[key] = {row.entity: {"province": row.province, "island": row.island, "value": float(row.value)} for row in g.itertuples(index=False)}
 
+    return month_map, week_map
 def main():
     LOG.info("Models dir: %s", MODELS_DIR)
     LOG.info("Scanning model files...")
@@ -185,22 +208,45 @@ def main():
 
     # write files
     index = {"generated_at": datetime.datetime.utcnow().isoformat()+"Z", "model_version": model_version, "files": []}
-    for (y,m), prov in month_map.items():
+    
+        # write files (bagian month_map)
+    for (y,m), city_map in month_map.items():
         if y not in YEARS: continue
         fname = f"choropleth_pred_{y:04d}_{m:02d}.json"
         fp = OUT_DIR / fname
-        payload = {"year": y, "month": m, "generated_at": index["generated_at"], "model_version": model_version, "data": [{"province": k, "value": v} for k,v in prov.items()]}
+        payload = {
+            "year": y,
+            "month": m,
+            "generated_at": index["generated_at"],
+            "model_version": model_version,
+            "data": [
+                {"city": ent, "province": info["province"], "island": info["island"], "value": info["value"]}
+                for ent, info in city_map.items()
+            ]
+        }
         fp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        index["files"].append({"type":"month","year":y,"month":m,"path":str(fp),"count":len(prov)})
+        index["files"].append({"type":"month","year":y,"month":m,"path":str(fp),"count":len(city_map)})
 
+    # week files
     if HAVE_WEEK_FILES:
-        for (y,m,w), prov in week_map.items():
+        for (y,m,w), city_map in week_map.items():
             if y not in YEARS: continue
             fname = f"choropleth_pred_{y:04d}_{m:02d}_w{w}.json"
             fp = OUT_DIR / fname
-            payload = {"year": y, "month": m, "week": w, "generated_at": index["generated_at"], "model_version": model_version, "data":[{"province":k,"value":v} for k,v in prov.items()]}
+            payload = {
+                "year": y,
+                "month": m,
+                "week": w,
+                "generated_at": index["generated_at"],
+                "model_version": model_version,
+                "data": [
+                    {"city": ent, "province": info["province"], "island": info["island"], "value": info["value"]}
+                    for ent, info in city_map.items()
+                ]
+            }
             fp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            index["files"].append({"type":"week","year":y,"month":m,"week":w,"path":str(fp),"count":len(prov)})
+            index["files"].append({"type":"week","year":y,"month":m,"week":w,"path":str(fp),"count":len(city_map)})
+
 
     idx_fp = OUT_DIR / "choropleth_pred_index.json"
     idx_fp.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")

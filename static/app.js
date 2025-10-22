@@ -289,7 +289,7 @@ function setTableHeader(){
   const thead = document.getElementById('rc_table_head') || document.querySelector('#rc_table thead');
   if(!thead) return;
   thead.innerHTML = `<tr>
-    <th style="width:56px">No</th>
+   <th style="width:56px">No</th>
     <th>Kabupaten/Kota</th>
     <th>Provinsi</th>
     <th>Pulau</th>
@@ -297,6 +297,8 @@ function setTableHeader(){
     <th class="num">Tanggal Terendah</th>
     <th class="num">Harga Tertinggi</th>
     <th class="num">Tanggal Tertinggi</th>
+    <th class="num">Rata² Kota</th>
+    <th class="num">Rata² Referensi</th>
   </tr>`;
 }
 
@@ -351,36 +353,116 @@ function attachTableFilters(){
 }
 
 function fillRegionTable(rows){
-  setTableHeader();
-  const tbody = document.querySelector('#rc_table tbody');
-  if(!tbody) return;
-  if(!rows || !Array.isArray(rows) || rows.length === 0){
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
-    document.getElementById('rc_table_shown_count').textContent = 0;
+  console.log('fillRegionTable called, rows:', Array.isArray(rows) ? rows.length : typeof rows, rows && rows[0]);
+  const tableEls = document.querySelectorAll('#rc_table');
+  if(tableEls.length === 0){
+    console.error('fillRegionTable: #rc_table not found in DOM!');
     return;
   }
+  if(tableEls.length > 1){
+    console.warn('fillRegionTable: multiple #rc_table found! Removing duplicates may help.', tableEls);
+  }
+
+  let tbody = document.querySelector('#rc_table tbody');
+  if(!tbody){
+    console.warn('fillRegionTable: tbody not found — creating one.');
+    const t = document.getElementById('rc_table');
+    const newTbody = document.createElement('tbody');
+    t.appendChild(newTbody);
+    tbody = document.querySelector('#rc_table tbody');
+    if(!tbody){
+      console.error('fillRegionTable: gagal membuat tbody');
+      return;
+    }
+  }
+
+  // defensive: if rows not array, clear and show message
+  if(!rows || !Array.isArray(rows) || rows.length === 0){
+    // header has 8 columns (adjust if your thead different)
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
+    const shownEl = document.getElementById('rc_table_shown_count');
+    const totalEl = document.getElementById('rc_table_total_count');
+    if(shownEl) shownEl.textContent = 0;
+    if(totalEl && window.__LAST_RC_META) totalEl.textContent = window.__LAST_RC_META.count || 0;
+    return;
+  }
+
+  let needComputeIsland = rows.some(r => r.island_mean === undefined && r.national_mean === undefined);
+  // We'll compute islandMeans and nationalMean only if some rows lack both server-side values.
+  let islandMeans = {};
+  let nationalMean = null;
+  if(needComputeIsland){
+    const accum = Object.create(null);
+    let sum = 0, count = 0;
+    rows.forEach(r => {
+      const meanRaw = (r.mean != null && !Number.isNaN(Number(r.mean))) ? Number(r.mean) : null;
+      const islandKey = (r.island != null && String(r.island).trim() !== '') ? String(r.island).trim() : 'unknown';
+
+      if(meanRaw !== null){
+        sum += meanRaw;
+        count += 1;
+        if(!accum[islandKey]) accum[islandKey] = { sum: 0, n: 0 };
+        accum[islandKey].sum += meanRaw;
+        accum[islandKey].n += 1;
+      }
+    });
+    Object.keys(accum).forEach(k => {
+      islandMeans[k] = (accum[k].n > 0) ? (accum[k].sum / accum[k].n) : null;
+    });
+    nationalMean = (count > 0) ? (sum / count) : null;
+  }
+
+  // Build HTML rows. Columns: no, kota, prov, pulau, min, max, mean_kota, mean_reference
   let html = '';
-  rows.forEach((r, idx) => {
-    const city = r.city || r.entity || '';
-    const province = r.province || '';
-    const island = r.island || '';
-    const min_value = (r.min != null) ? rupiah(Math.round(r.min)) : '—';
-    const max_value = (r.max != null) ? rupiah(Math.round(r.max)) : '—';
-    const min_date = r.min_date || r.min_date || '—';
-    const max_date = r.max_date || r.max_date || '—';
-    html += `<tr data-city="${escapeHtml(city).toLowerCase()}" data-prov="${escapeHtml(province).toLowerCase()}" data-island="${escapeHtml(island).toLowerCase()}">
-      <td>${idx+1}</td>
-      <td>${escapeHtml(city)}</td>
-      <td>${escapeHtml(province)}</td>
-      <td>${escapeHtml(island)}</td>
-      <td class="num">${min_value}</td>
-      <td class="num">${min_date}</td>
-      <td class="num">${max_value}</td>
-      <td class="num">${max_date}</td>
-    </tr>`;
-  });
-  tbody.innerHTML = html;
-  document.getElementById('rc_table_shown_count').textContent = rows.length;
+rows.forEach((r, idx) => {
+  const city = r.city ?? r.name ?? r.entity ?? '';
+  const province = r.province ?? '';
+  const island = r.island ?? 'unknown';
+
+  const min_value = (r.min != null) ? rupiah(Math.round(Number(r.min))) : '—';
+  const min_date = r.min_date ?? '—';
+  const max_value = (r.max != null) ? rupiah(Math.round(Number(r.max))) : '—';
+  const max_date = r.max_date ?? '—';
+  const mean_value = (r.mean != null) ? rupiah(Math.round(Number(r.mean))) : '—';
+
+  // referensi (island_mean/national_mean)
+  let ref_value = '—';
+  if (r.island_mean != null) {
+    ref_value = rupiah(Math.round(Number(r.island_mean)));
+  } else if (r.national_mean != null) {
+    ref_value = rupiah(Math.round(Number(r.national_mean)));
+  }
+
+  const no = r.no ?? (window.__LAST_RC_META ? ((window.__LAST_RC_META.page - 1) * window.__LAST_RC_META.page_size + idx + 1) : idx + 1);
+
+  html += `<tr data-city="${escapeHtml(city).toLowerCase()}" data-prov="${escapeHtml(province).toLowerCase()}" data-island="${escapeHtml(island).toLowerCase()}">
+    <td>${no}</td>
+    <td>${escapeHtml(city)}</td>
+    <td>${escapeHtml(province)}</td>
+    <td>${escapeHtml(island)}</td>
+    <td class="num">${min_value}</td>
+    <td class="num">${min_date}</td>
+    <td class="num">${max_value}</td>
+    <td class="num">${max_date}</td>
+    <td class="num">${mean_value}</td>
+    <td class="num">${ref_value}</td>
+  </tr>`;
+});
+tbody.innerHTML = html;
+
+
+  // update count note (use meta cached globally if available)
+  const shownEl = document.getElementById('rc_table_shown_count');
+  const totalEl = document.getElementById('rc_table_total_count');
+  if(window.__LAST_RC_META){
+    if(shownEl) shownEl.textContent = (window.__LAST_RC_META.rows_shown || rows.length);
+    if(totalEl) totalEl.textContent = (window.__LAST_RC_META.count || 0);
+  } else {
+    if(shownEl) shownEl.textContent = rows.length;
+    if(totalEl) totalEl.textContent = rows.length;
+  }
+
+  // repopulate filter dropdowns and apply filters
   populateFilterDropdownsFromRows(rows);
   applyTableFilters();
 }
@@ -476,91 +558,6 @@ const CLIENT_PAGE_SIZE = 25;
 const RC_CACHE_TTL = 1000 * 60 * 5;
 const __RC_CACHE = {};
 
-function fillRegionTable(rows){
-  console.log('fillRegionTable called, rows:', Array.isArray(rows) ? rows.length : typeof rows, rows && rows[0]);
-  // quick DOM sanity checks
-  const tableEls = document.querySelectorAll('#rc_table');
-  if(tableEls.length === 0){
-    console.error('fillRegionTable: #rc_table not found in DOM!');
-    return;
-  }
-  if(tableEls.length > 1){
-    console.warn('fillRegionTable: multiple #rc_table found! Removing duplicates may help.', tableEls);
-  }
-
-  let tbody = document.querySelector('#rc_table tbody');
-  if(!tbody){
-    console.warn('fillRegionTable: tbody not found — creating one.');
-    const t = document.getElementById('rc_table');
-    const newTbody = document.createElement('tbody');
-    t.appendChild(newTbody);
-    // re-query
-    tbody = document.querySelector('#rc_table tbody');
-    if(!tbody){
-      console.error('fillRegionTable: gagal membuat tbody');
-      return;
-    }
-  }
-
-  // defensive: if rows not array, clear and show message
-  if(!rows || !Array.isArray(rows) || rows.length === 0){
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
-    // update counts
-    const shownEl = document.getElementById('rc_table_shown_count');
-    const totalEl = document.getElementById('rc_table_total_count');
-    if(shownEl) shownEl.textContent = 0;
-    if(totalEl && window.__LAST_RC_META) totalEl.textContent = window.__LAST_RC_META.count || 0;
-    return;
-  }
-
-  // build rows robustly (handle missing keys gracefully)
-  let html = '';
-  rows.forEach((r, idx) => {
-    // allow either r.city or r.province-only entries
-    const city = r.city ?? r.name ?? r.entity ?? '';
-    const province = r.province ?? '';
-    const island = r.island ?? '';
-    const min_value = (r.min != null) ? rupiah(Math.round(Number(r.min))) : '—';
-    const max_value = (r.max != null) ? rupiah(Math.round(Number(r.max))) : '—';
-    const min_date = r.min_date ?? '—';
-    const max_date = r.max_date ?? '—';
-    const mean_value = (r.mean != null) ? rupiah(Math.round(Number(r.mean))) : '—';
-    const ref_mean_value = (r.ref_mean != null) ? rupiah(Math.round(Number(r.ref_mean))) : '—';
-
-    const no = r.no ?? ( (window.__LAST_RC_META && window.__LAST_RC_META.page && window.__LAST_RC_META.page_size) 
-                        ? ((window.__LAST_RC_META.page - 1) * window.__LAST_RC_META.page_size + idx + 1) : idx + 1);
-
-    html += `<tr data-city="${escapeHtml(city).toLowerCase()}" data-prov="${escapeHtml(province).toLowerCase()}" data-island="${escapeHtml(island).toLowerCase()}">
-      <td>${no}</td>
-      <td>${escapeHtml(city)}</td>
-      <td>${escapeHtml(province)}</td>
-      <td>${escapeHtml(island)}</td>
-      <td class="num">${min_value}</td>
-      <td class="num">${min_date}</td>
-      <td class="num">${max_value}</td>
-      <td class="num">${max_date}</td>
-      <td class="num">${mean_value}</td>
-      <td class="num">${ref_mean_value}</td>
-    </tr>`;
-  });
-
-  tbody.innerHTML = html;
-
-  // update count note (use meta cached globally if available)
-  const shownEl = document.getElementById('rc_table_shown_count');
-  const totalEl = document.getElementById('rc_table_total_count');
-  if(window.__LAST_RC_META){
-    if(shownEl) shownEl.textContent = (window.__LAST_RC_META.rows_shown || rows.length);
-    if(totalEl) totalEl.textContent = (window.__LAST_RC_META.count || 0);
-  } else {
-    if(shownEl) shownEl.textContent = rows.length;
-    if(totalEl) totalEl.textContent = rows.length;
-  }
-
-  // repopulate filter dropdowns and apply filters
-  populateFilterDropdownsFromRows(rows);
-  applyTableFilters();
-}
 
 
 function normalizeProvName(s){
@@ -684,9 +681,16 @@ async function showMapBeranda(event){
           const provName = (feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "").trim();
           if(!provName) return;
           if(typeof loadRegionSummaryForProvince === 'function'){
-            loadRegionSummaryForProvince(provName).catch(err => console.error('loadRegionSummaryForProvince', err));
+             const tahun = document.getElementById('b_tahun')?.value || '';
+            const bulan = document.getElementById('b_bulan')?.value || '';
+            const minggu = document.getElementById('b_minggu')?.value || '';
+            const mode = (document.getElementById('b_mode') && document.getElementById('b_mode').value) || 'actual';
+            loadRegionSummaryForProvince(provName, 1, { year: tahun, month: bulan, week: minggu, mode }).catch(err => console.error('loadRegionSummaryForProvince', err));
+
           }
-        });
+        }
+      
+      );
       }
     }).addTo(m);
 
@@ -884,7 +888,7 @@ async function loadRegionSummaryFromMap(island, page = 1){
     if(loader) loader.style.display = 'none';
   }
 }
-async function loadRegionSummaryForProvince(prov, page = 1){
+async function loadRegionSummaryForProvince(prov, page = 1, opts = {}){
   const tbody = document.querySelector('#rc_table tbody');
   const loader = document.getElementById('rc_loading');
   if(loader) loader.style.display = 'inline-block';
@@ -895,7 +899,13 @@ async function loadRegionSummaryForProvince(prov, page = 1){
       renderPager({count:0,page:1,page_size:25}, ()=>{});
       return;
     }
-    const key = `province:${prov}:page:${page}`;
+
+    const tahun = opts.year ?? (document.getElementById('b_tahun')?.value || '');
+    const bulan = opts.month ?? (document.getElementById('b_bulan')?.value || '');
+    const minggu = opts.week ?? (document.getElementById('b_minggu')?.value || '');
+    const mode = opts.mode ?? ((document.getElementById('b_mode') && document.getElementById('b_mode').value) || 'actual');
+
+    const key = `province:${prov}:page:${page}:y${tahun}:m${bulan}:w${minggu}:mode${mode}`;
     const now = Date.now();
     if(__RC_CACHE[key] && (now - __RC_CACHE[key].ts) < RC_CACHE_TTL){
       const js = __RC_CACHE[key].data;
@@ -907,7 +917,8 @@ async function loadRegionSummaryForProvince(prov, page = 1){
     }
 
     const req_page_size = 25;
-    const url = `/api/region_summary?mode=province&value=${encodeURIComponent(prov)}&page=${page}&page_size=${req_page_size}`;
+    const url = `/api/region_summary?mode=province&value=${encodeURIComponent(prov)}&page=${page}&page_size=${req_page_size}`
+                + `&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}&predict=${mode === 'predicted' ? '1' : '0'}`;
     console.log('fetch region_summary province', url);
 
     // => replaced fetch(...) with fetchJsonWithRetry(...)
