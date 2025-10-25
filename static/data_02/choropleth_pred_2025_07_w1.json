@@ -1,0 +1,603 @@
+{
+  "year": 2025,
+  "month": 7,
+  "week": 1,
+  "generated_at": "2025-10-22T19:22:32.927103Z",
+  "model_version": "620eae7bc9",
+  "data": [
+    {
+      "city": "kab._banyumas",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 20415.2242
+    },
+    {
+      "city": "kab._banyuwangi",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 20350.437885714287
+    },
+    {
+      "city": "kab._boyolali",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 18438.94722857143
+    },
+    {
+      "city": "kab._bulukomba",
+      "province": "SULAWESI SELATAN",
+      "island": "Sulawesi",
+      "value": 19542.97911428571
+    },
+    {
+      "city": "kab._bulungan",
+      "province": "KALIMANTAN UTARA",
+      "island": "Kalimantan",
+      "value": 20406.791171428573
+    },
+    {
+      "city": "kab._bungo",
+      "province": "JAMBI",
+      "island": "Sumatra",
+      "value": 20428.634214285714
+    },
+    {
+      "city": "kab._cilacap",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 20787.186228571427
+    },
+    {
+      "city": "kab._cirebon",
+      "province": "JAWA BARAT",
+      "island": "Jawa",
+      "value": 19932.05567142857
+    },
+    {
+      "city": "kab._gorontalo",
+      "province": "GORONTALO",
+      "island": "Sulawesi",
+      "value": 23124.91314285714
+    },
+    {
+      "city": "kab._jayawijaya",
+      "province": "PAPUA",
+      "island": "Papua",
+      "value": 30828.571428571428
+    },
+    {
+      "city": "kab._jember",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 19362.6954
+    },
+    {
+      "city": "kab._karanganyar",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 19762.49865714286
+    },
+    {
+      "city": "kab._kudus",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 19619.774085714285
+    },
+    {
+      "city": "kab._lombok_timur",
+      "province": "NUSA TENGGARA BARAT",
+      "island": "Bali–NT",
+      "value": 21995.56428571429
+    },
+    {
+      "city": "kab._majene",
+      "province": "SULAWESI BARAT",
+      "island": "Sulawesi",
+      "value": 20486.310028571428
+    },
+    {
+      "city": "kab._manokwari",
+      "province": "PAPUA BARAT",
+      "island": "Papua",
+      "value": 23654.242814285713
+    },
+    {
+      "city": "kab._merauke",
+      "province": "PAPUA",
+      "island": "Papua",
+      "value": 22153.035857142855
+    },
+    {
+      "city": "kab._mimika",
+      "province": "PAPUA",
+      "island": "Papua",
+      "value": 22667.711457142857
+    },
+    {
+      "city": "kab._nabire",
+      "province": "PAPUA",
+      "island": "Papua",
+      "value": 21492.85714285714
+    },
+    {
+      "city": "kab._polewali_mandar",
+      "province": "SULAWESI BARAT",
+      "island": "Sulawesi",
+      "value": 22357.431628571427
+    },
+    {
+      "city": "kab._sintang",
+      "province": "KALIMANTAN BARAT",
+      "island": "Kalimantan",
+      "value": 21629.793542857144
+    },
+    {
+      "city": "kab._sukoharjo",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 19583.30707142857
+    },
+    {
+      "city": "kab._sumba_timur",
+      "province": "NUSA TENGGARA TIMUR",
+      "island": "Bali–NT",
+      "value": 24479.246685714286
+    },
+    {
+      "city": "kab._sumbawa",
+      "province": "NUSA TENGGARA TIMUR",
+      "island": "Bali–NT",
+      "value": 20908.659657142856
+    },
+    {
+      "city": "kab._sumenep",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 19398.92094285714
+    },
+    {
+      "city": "kab._wonogiri",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 18593.851185714284
+    },
+    {
+      "city": "kab_kotabaru",
+      "province": "KALIMANTAN SELATAN",
+      "island": "Kalimantan",
+      "value": 22434.576485714286
+    },
+    {
+      "city": "kota_balikpapan",
+      "province": "KALIMANTAN TIMUR",
+      "island": "Kalimantan",
+      "value": 21704.74765714286
+    },
+    {
+      "city": "kota_banda_aceh",
+      "province": "ACEH",
+      "island": "Sumatra",
+      "value": 21704.74765714286
+    },
+    {
+      "city": "kota_bandar_lampung",
+      "province": "LAMPUNG",
+      "island": "Sumatra",
+      "value": 14569.224885714286
+    },
+    {
+      "city": "kota_bandung",
+      "province": "JAWA BARAT",
+      "island": "Jawa",
+      "value": 20617.01977142857
+    },
+    {
+      "city": "kota_banggai",
+      "province": "SULAWESI TENGAH",
+      "island": "Sulawesi",
+      "value": 17606.550085714287
+    },
+    {
+      "city": "kota_banjarmasin",
+      "province": "KALIMANTAN SELATAN",
+      "island": "Kalimantan",
+      "value": 20651.161728571427
+    },
+    {
+      "city": "kota_batam",
+      "province": "KEPULAUAN RIAU",
+      "island": "Sumatra",
+      "value": 18848.79477142857
+    },
+    {
+      "city": "kota_bau_-_bau",
+      "province": "SULAWESI TENGGARA",
+      "island": "Sulawesi",
+      "value": 23592.06037142857
+    },
+    {
+      "city": "kota_bekasi",
+      "province": "JAWA BARAT",
+      "island": "Jawa",
+      "value": 20926.900742857142
+    },
+    {
+      "city": "kota_bengkulu",
+      "province": "BENGKULU",
+      "island": "Sumatra",
+      "value": 19897.80994285714
+    },
+    {
+      "city": "kota_bima",
+      "province": "NUSA TENGGARA BARAT",
+      "island": "Bali–NT",
+      "value": 21788.796142857143
+    },
+    {
+      "city": "kota_blitar",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 18767.214885714286
+    },
+    {
+      "city": "kota_bogor",
+      "province": "JAWA BARAT",
+      "island": "Jawa",
+      "value": 21281.07537142857
+    },
+    {
+      "city": "kota_bontang",
+      "province": "KALIMANTAN TIMUR",
+      "island": "Kalimantan",
+      "value": 20731.383800000003
+    },
+    {
+      "city": "kota_cilegon",
+      "province": "BANTEN",
+      "island": "Jawa",
+      "value": 18841.298857142858
+    },
+    {
+      "city": "kota_cirebon",
+      "province": "JAWA BARAT",
+      "island": "Jawa",
+      "value": 20050.0
+    },
+    {
+      "city": "kota_denpasar",
+      "province": "BALI",
+      "island": "Bali–NT",
+      "value": 21862.638014285712
+    },
+    {
+      "city": "kota_depok",
+      "province": "JAWA BARAT",
+      "island": "Jawa",
+      "value": 20455.334828571427
+    },
+    {
+      "city": "kota_dumai",
+      "province": "KEPULAUAN RIAU",
+      "island": "Sumatra",
+      "value": 20082.472828571426
+    },
+    {
+      "city": "kota_gorontalo",
+      "province": "GORONTALO",
+      "island": "Sulawesi",
+      "value": 25777.33934285714
+    },
+    {
+      "city": "kota_gunung_sitoli",
+      "province": "SUMATERA UTARA",
+      "island": "Sumatra",
+      "value": 22847.27237142857
+    },
+    {
+      "city": "kota_jakarta_pusat",
+      "province": "DKI JAKARTA",
+      "island": "Jawa",
+      "value": 20716.783457142858
+    },
+    {
+      "city": "kota_jambi",
+      "province": "JAMBI",
+      "island": "Sumatra",
+      "value": 20154.388285714285
+    },
+    {
+      "city": "kota_jayapura",
+      "province": "PAPUA",
+      "island": "Papua",
+      "value": 22713.447014285714
+    },
+    {
+      "city": "kota_kediri",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 19917.374257142856
+    },
+    {
+      "city": "kota_kendari",
+      "province": "SULAWESI TENGGARA",
+      "island": "Sulawesi",
+      "value": 20381.69354285714
+    },
+    {
+      "city": "kota_kupang",
+      "province": "NUSA TENGGARA TIMUR",
+      "island": "Bali–NT",
+      "value": 20541.54
+    },
+    {
+      "city": "kota_lhokseumawe",
+      "province": "ACEH",
+      "island": "Sumatra",
+      "value": 20832.0948
+    },
+    {
+      "city": "kota_lubuk_linggau",
+      "province": "SUMATERA SELATAN",
+      "island": "Sumatra",
+      "value": 20350.0
+    },
+    {
+      "city": "kota_madiun",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 19916.199628571427
+    },
+    {
+      "city": "kota_makassar",
+      "province": "SULAWESI SELATAN",
+      "island": "Sulawesi",
+      "value": 19856.456685714285
+    },
+    {
+      "city": "kota_malang",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 20328.045000000002
+    },
+    {
+      "city": "kota_maluku",
+      "province": "MALUKU",
+      "island": "Maluku",
+      "value": 22005.34745714286
+    },
+    {
+      "city": "kota_mamuju",
+      "province": "SULAWESI BARAT",
+      "island": "Sulawesi",
+      "value": 20592.052457142854
+    },
+    {
+      "city": "kota_manado",
+      "province": "SULAWESI UTARA",
+      "island": "Sulawesi",
+      "value": 18235.330257142858
+    },
+    {
+      "city": "kota_mataram",
+      "province": "NUSA TENGGARA BARAT",
+      "island": "Bali–NT",
+      "value": 21400.515142857144
+    },
+    {
+      "city": "kota_maumere",
+      "province": "NUSA TENGGARA TIMUR",
+      "island": "Bali–NT",
+      "value": 22685.256485714286
+    },
+    {
+      "city": "kota_medan",
+      "province": "SUMATERA UTARA",
+      "island": "Sumatra",
+      "value": 19687.236942857144
+    },
+    {
+      "city": "kota_metro",
+      "province": "LAMPUNG",
+      "island": "Sumatra",
+      "value": 20201.211
+    },
+    {
+      "city": "kota_padang",
+      "province": "SUMATERA BARAT",
+      "island": "Sumatra",
+      "value": 19888.783542857145
+    },
+    {
+      "city": "kota_padang_sidempuan",
+      "province": "SUMATERA UTARA",
+      "island": "Sumatra",
+      "value": 19862.830628571428
+    },
+    {
+      "city": "kota_palangkaraya",
+      "province": "KALIMANTAN TENGAH",
+      "island": "Kalimantan",
+      "value": 21782.631914285714
+    },
+    {
+      "city": "kota_palembang",
+      "province": "SUMATERA SELATAN",
+      "island": "Sumatra",
+      "value": 23654.242814285713
+    },
+    {
+      "city": "kota_palu",
+      "province": "SULAWESI TENGAH",
+      "island": "Sulawesi",
+      "value": 20902.89414285714
+    },
+    {
+      "city": "kota_pangkalpinang",
+      "province": "BANGKA BELITUNG",
+      "island": "Sumatra",
+      "value": 18593.851185714284
+    },
+    {
+      "city": "kota_pare_-pare",
+      "province": "SULAWESI SELATAN",
+      "island": "Sulawesi",
+      "value": 19999.109728571428
+    },
+    {
+      "city": "kota_pekanbaru",
+      "province": "KEPULAUAN RIAU",
+      "island": "Sumatra",
+      "value": 20056.922957142855
+    },
+    {
+      "city": "kota_pematang_siantar",
+      "province": "SUMATERA UTARA",
+      "island": "Sumatra",
+      "value": 19746.30444285714
+    },
+    {
+      "city": "kota_pontianak",
+      "province": "KALIMANTAN BARAT",
+      "island": "Kalimantan",
+      "value": 19755.876657142857
+    },
+    {
+      "city": "kota_probolinggo",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 19778.178085714288
+    },
+    {
+      "city": "kota_samarinda",
+      "province": "KALIMANTAN TIMUR",
+      "island": "Kalimantan",
+      "value": 21515.15062857143
+    },
+    {
+      "city": "kota_sampit",
+      "province": "KALIMANTAN TENGAH",
+      "island": "Kalimantan",
+      "value": 20339.261714285713
+    },
+    {
+      "city": "kota_semarang",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 19780.783714285713
+    },
+    {
+      "city": "kota_serang",
+      "province": "BANTEN",
+      "island": "Jawa",
+      "value": 18979.860485714285
+    },
+    {
+      "city": "kota_sibolga",
+      "province": "SUMATERA UTARA",
+      "island": "Sumatra",
+      "value": 19911.646285714287
+    },
+    {
+      "city": "kota_singkawang",
+      "province": "KALIMANTAN BARAT",
+      "island": "Kalimantan",
+      "value": 19249.845242857144
+    },
+    {
+      "city": "kota_sorong",
+      "province": "PAPUA BARAT",
+      "island": "Papua",
+      "value": 23608.433628571427
+    },
+    {
+      "city": "kota_sukabumi",
+      "province": "JAWA BARAT",
+      "island": "Jawa",
+      "value": 20265.52088571429
+    },
+    {
+      "city": "kota_sumenep",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 19917.374257142856
+    },
+    {
+      "city": "kota_surabaya",
+      "province": "JAWA TIMUR",
+      "island": "Jawa",
+      "value": 20534.829742857142
+    },
+    {
+      "city": "kota_surakarta_(solo)",
+      "province": "JAWA TENGAH",
+      "island": "Jawa",
+      "value": 19422.938
+    },
+    {
+      "city": "kota_tanjung",
+      "province": "KALIMANTAN SELATAN",
+      "island": "Kalimantan",
+      "value": 19869.54517142857
+    },
+    {
+      "city": "kota_tanjung_pandan",
+      "province": "BANGKA BELITUNG",
+      "island": "Sumatra",
+      "value": 18008.170457142856
+    },
+    {
+      "city": "kota_tanjung_pinang",
+      "province": "KEPULAUAN RIAU",
+      "island": "Sumatra",
+      "value": 18008.170457142856
+    },
+    {
+      "city": "kota_tarakan",
+      "province": "KALIMANTAN UTARA",
+      "island": "Kalimantan",
+      "value": 21615.08688571429
+    },
+    {
+      "city": "kota_tasikmalaya",
+      "province": "JAWA BARAT",
+      "island": "Jawa",
+      "value": 19976.238714285715
+    },
+    {
+      "city": "kota_tembilahan",
+      "province": "KEPULAUAN RIAU",
+      "island": "Sumatra",
+      "value": 18210.192657142856
+    },
+    {
+      "city": "kota_ternate",
+      "province": "MALUKU UTARA",
+      "island": "Maluku",
+      "value": 21883.844028571428
+    },
+    {
+      "city": "kota_tual",
+      "province": "MALUKU",
+      "island": "Maluku",
+      "value": 24026.470857142856
+    },
+    {
+      "city": "kota_watampone",
+      "province": "SULAWESI SELATAN",
+      "island": "Sulawesi",
+      "value": 18847.817057142856
+    },
+    {
+      "city": "kota_yogyakarta",
+      "province": "DAERAH ISTIMEWA YOGYAKARTA",
+      "island": "Jawa",
+      "value": 19230.936485714286
+    },
+    {
+      "city": "kotamobagu",
+      "province": "SULAWESI UTARA",
+      "island": "Sulawesi",
+      "value": 19230.936485714286
+    }
+  ]
+}
