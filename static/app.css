@@ -1554,3 +1554,31 @@ html { scroll-padding-top: 84px; } /* sesuaikan jika perlu */
   border-color: #ccc;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
+/* Hide bulan & minggu only inside Beranda (keamanan: tidak menyentuh global selects) */
+#beranda #b_bulan,
+#beranda #b_minggu,
+#beranda #b_bulan ~ label,   /* kalau ada label sibling */
+#beranda #b_minggu ~ label
+{
+  display: none !important;
+}
+ /* jika elemen dibungkus .input-group, sembunyikan bungkusnya agar label ikut */
+#beranda #b_bulan.closest-hidden,
+#beranda #b_minggu.closest-hidden { display: none !important; }
+
+/* === SEMBUNYIKAN input-group bulan & minggu di Beranda === */
+#beranda #b_bulan,
+#beranda label[for="b_bulan"],
+#beranda #b_minggu,
+#beranda label[for="b_minggu"],
+#beranda #b_minggu:disabled,
+#beranda select#b_bulan,
+#beranda select#b_minggu {
+  display: none !important;
+}
+
+/* (opsional) kalau kamu mau sekaligus sembunyikan wrapper <div class="input-group"> nya juga: */
+#beranda .input-group:has(#b_bulan),
+#beranda .input-group:has(#b_minggu) {
+  display: none !important;
+}
