@@ -10,6 +10,9 @@
 
   <!-- Library eksternal -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.bootstrap4.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -73,17 +76,20 @@
       <!-- ====== BERANDA ====== -->
       <div class="content-section active" id="beranda">
         <h2 class="section-title">Selamat Datang di Sistem Prediksi Harga Minyak Goreng</h2>
-       <div class="input-group">
+       <div class="input-groups">
   <label for="quick_kabupaten">Pilih Kabupaten/Kota untuk diprediksi (Quick)</label>
+
+  <!-- single select saja -->
   <select id="quick_kabupaten" onchange="loadQuickPredictionNoDate(this.value)">
     <option value="">-- Pilih --</option>
-    <!-- gunakan slug yang server kenali jika memungkinkan -->
-    <option value="kota_administrasi_jakarta_pusat">Jakarta Pusat</option>
-    <option value="kota_bandung">Bandung</option>
-    <option value="kota_surabaya">Surabaya</option>
-    <option value="kota_medan">Medan</option>
+    <!-- options akan diisi oleh JS -->
   </select>
+
+  <p id="auto-location" class="small-text" aria-live="polite"></p>
 </div>
+
+<p id="auto-location" class="small-text" style="margin-top:8px; font-style:italic; color:#444;">
+
 
 
       <!-- Loading State -->
@@ -604,7 +610,7 @@
     </div>
   </div>
 
-  <div class="card-section">
+  <!-- <div class="card-section">
     <h3>🔮 Prediksi Harga Mendatang</h3>
     <div class="predictions-grid">
       <div class="prediction-card pred-1day">
@@ -623,7 +629,7 @@
         <div class="pred-date" id="pred30DayDate">—</div>
       </div>
     </div>
-  </div>
+  </div> -->
 
   <div class="card-section">
     <h3>📉 Grafik Prediksi</h3>

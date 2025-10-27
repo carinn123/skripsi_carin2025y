@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 # --------- CONFIG ---------
 # Windows path to your models folder (you gave this)
 MODELS_DIR = Path(r"C:\Users\ASUS\skripsi_carin\models")
-OUT_DIR = Path("static/data_01")
+OUT_DIR = Path("static/data_01_")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_WORKERS = 4            # mulai konservatif (naikkan jika mesin punya banyak CPU/RAM)
@@ -99,7 +99,7 @@ def compute_entity_predictions_until(entity):
     if days_needed <= 0:
         return []
     try:
-        preds = _recursive_predict(entity, days=days_needed, mode="test")
+        preds = _recursive_predict(entity, days=days_needed, mode="real")
         out = []
         for p in preds:
             p_dt = pd.to_datetime(p["date"]).normalize()

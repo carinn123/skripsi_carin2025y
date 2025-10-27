@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('quickPredResult').style.display = 'none';
         return;
       }
-      quickPredictFetchAndRender(entity, { mode: 'test' });
+      quickPredictFetchAndRender(entity, { mode: 'real' });
     });
   }
 });
@@ -298,7 +298,7 @@ function setTableHeader(){
     <th class="num">Harga Tertinggi</th>
     <th class="num">Tanggal Tertinggi</th>
     <th class="num">Rata² Kota</th>
-    <th class="num">Rata² Referensi</th>
+    <th class="num">Rata² Mode</th>
   </tr>`;
 }
 
@@ -378,8 +378,7 @@ function fillRegionTable(rows){
 
   // defensive: if rows not array, clear and show message
   if(!rows || !Array.isArray(rows) || rows.length === 0){
-    // header has 8 columns (adjust if your thead different)
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--muted)">Tidak ada data untuk pilihan ini.</td></tr>`;
     const shownEl = document.getElementById('rc_table_shown_count');
     const totalEl = document.getElementById('rc_table_total_count');
     if(shownEl) shownEl.textContent = 0;
@@ -387,15 +386,19 @@ function fillRegionTable(rows){
     return;
   }
 
-  let needComputeIsland = rows.some(r => r.island_mean === undefined && r.national_mean === undefined);
-  // We'll compute islandMeans and nationalMean only if some rows lack both server-side values.
+  // determine whether we need to compute island/national references on client
+  // server may provide island_mean OR national_mean OR ref_mean; be flexible
+  let needComputeRef = rows.some(r => (r.island_mean == null && r.national_mean == null && r.ref_mean == null));
   let islandMeans = {};
   let nationalMean = null;
-  if(needComputeIsland){
+  if(needComputeRef){
     const accum = Object.create(null);
     let sum = 0, count = 0;
     rows.forEach(r => {
-      const meanRaw = (r.mean != null && !Number.isNaN(Number(r.mean))) ? Number(r.mean) : null;
+      // row.mean was normalized earlier in many places; support mean, mean_value
+      const meanRaw = (r.mean != null && !Number.isNaN(Number(r.mean))) ? Number(r.mean)
+                     : (r.mean_value != null && !Number.isNaN(Number(r.mean_value))) ? Number(r.mean_value)
+                     : null;
       const islandKey = (r.island != null && String(r.island).trim() !== '') ? String(r.island).trim() : 'unknown';
 
       if(meanRaw !== null){
@@ -412,44 +415,65 @@ function fillRegionTable(rows){
     nationalMean = (count > 0) ? (sum / count) : null;
   }
 
-  // Build HTML rows. Columns: no, kota, prov, pulau, min, max, mean_kota, mean_reference
+  // Build HTML rows. Columns: no, kota, prov, pulau, min, max, mean_kota, ref_mean
   let html = '';
-rows.forEach((r, idx) => {
-  const city = r.city ?? r.name ?? r.entity ?? '';
-  const province = r.province ?? '';
-  const island = r.island ?? 'unknown';
+  rows.forEach((r, idx) => {
+    const city = r.city ?? r.name ?? r.entity ?? '';
+    const province = r.province ?? '';
+    const island = r.island ?? 'unknown';
 
-  const min_value = (r.min != null) ? rupiah(Math.round(Number(r.min))) : '—';
-  const min_date = r.min_date ?? '—';
-  const max_value = (r.max != null) ? rupiah(Math.round(Number(r.max))) : '—';
-  const max_date = r.max_date ?? '—';
-  const mean_value = (r.mean != null) ? rupiah(Math.round(Number(r.mean))) : '—';
+    const min_value = (r.min != null) ? rupiah(Math.round(Number(r.min))) : '—';
+    const min_date = r.min_date ?? '—';
+    const max_value = (r.max != null) ? rupiah(Math.round(Number(r.max))) : '—';
+    const max_date = r.max_date ?? '—';
 
-  // referensi (island_mean/national_mean)
-  let ref_value = '—';
-  if (r.island_mean != null) {
-    ref_value = rupiah(Math.round(Number(r.island_mean)));
-  } else if (r.national_mean != null) {
-    ref_value = rupiah(Math.round(Number(r.national_mean)));
-  }
+    // Prefer server-provided mean variants; support mean, mean_value
+    const mean_raw = (r.mean != null && !Number.isNaN(Number(r.mean))) ? Number(r.mean)
+                    : (r.mean_value != null && !Number.isNaN(Number(r.mean_value))) ? Number(r.mean_value)
+                    : null;
+    const mean_value = (mean_raw != null) ? rupiah(Math.round(mean_raw)) : '—';
 
-  const no = r.no ?? (window.__LAST_RC_META ? ((window.__LAST_RC_META.page - 1) * window.__LAST_RC_META.page_size + idx + 1) : idx + 1);
+    // reference value priority:
+    // 1) island_mean (server)
+    // 2) national_mean (server)
+    // 3) ref_mean (legacy server field)
+    // 4) fallback computed islandMeans/nationalMean on client
+    let refNum = null;
+    if (r.island_mean != null && !Number.isNaN(Number(r.island_mean))) {
+      refNum = Number(r.island_mean);
+    } else if (r.national_mean != null && !Number.isNaN(Number(r.national_mean))) {
+      refNum = Number(r.national_mean);
+    } else if (r.ref_mean != null && !Number.isNaN(Number(r.ref_mean))) {
+      refNum = Number(r.ref_mean);
+    } else {
+      // use computed fallback if available
+      const islKey = (island && String(island).trim() !== '') ? String(island).trim() : 'unknown';
+      if (Object.prototype.hasOwnProperty.call(islandMeans, islKey) && islandMeans[islKey] != null) {
+        refNum = islandMeans[islKey];
+      } else if (nationalMean != null) {
+        refNum = nationalMean;
+      } else {
+        refNum = null;
+      }
+    }
+    const ref_value = (refNum != null) ? rupiah(Math.round(Number(refNum))) : '—';
 
-  html += `<tr data-city="${escapeHtml(city).toLowerCase()}" data-prov="${escapeHtml(province).toLowerCase()}" data-island="${escapeHtml(island).toLowerCase()}">
-    <td>${no}</td>
-    <td>${escapeHtml(city)}</td>
-    <td>${escapeHtml(province)}</td>
-    <td>${escapeHtml(island)}</td>
-    <td class="num">${min_value}</td>
-    <td class="num">${min_date}</td>
-    <td class="num">${max_value}</td>
-    <td class="num">${max_date}</td>
-    <td class="num">${mean_value}</td>
-    <td class="num">${ref_value}</td>
-  </tr>`;
-});
-tbody.innerHTML = html;
+    const no = r.no ?? (window.__LAST_RC_META ? ((window.__LAST_RC_META.page - 1) * window.__LAST_RC_META.page_size + idx + 1) : idx + 1);
 
+    html += `<tr data-city="${escapeHtml(city).toLowerCase()}" data-prov="${escapeHtml(province).toLowerCase()}" data-island="${escapeHtml(island).toLowerCase()}">
+      <td>${no}</td>
+      <td>${escapeHtml(city)}</td>
+      <td>${escapeHtml(province)}</td>
+      <td>${escapeHtml(island)}</td>
+      <td class="num">${min_value}</td>
+      <td class="num">${min_date}</td>
+      <td class="num">${max_value}</td>
+      <td class="num">${max_date}</td>
+      <td class="num">${mean_value}</td>
+      <td class="num">${ref_value}</td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
 
   // update count note (use meta cached globally if available)
   const shownEl = document.getElementById('rc_table_shown_count');
@@ -466,6 +490,7 @@ tbody.innerHTML = html;
   populateFilterDropdownsFromRows(rows);
   applyTableFilters();
 }
+
 
 function showMapValidation(msg){
   const el = document.getElementById('mapValidation');
@@ -659,7 +684,7 @@ async function showMapBeranda(event){
       style: f => {
         const rawn = f.properties.Propinsi || f.properties.PROVINSI || f.properties.provinsi || f.properties.name || f.properties.NAMOBJ || "";
         const rec = vmap[normProv(rawn)];
-        const fill = rec ? (rec.cat==='low' ? '#2ecc71' : rec.cat==='mid' ? '#f1c40f' : '#e74c3c') : '#bdc3c7';
+        const fill = rec ? (rec.cat==='T1' ? '#2ecc71' : rec.cat==='T2' ? '#f1c40f' : '#e74c3c') : '#bdc3c7';
         return { color:'#fff', weight:1, fillColor:fill, fillOpacity:.85 };
       },
       onEachFeature: (feature, layer) => {
@@ -699,52 +724,7 @@ async function showMapBeranda(event){
     // === TABLE: map server table rows to expected fillRegionTable format
     // If server didn't include ref_mean, compute fallback on client
     let tableRows = [];
-    if(js.table && Array.isArray(js.table) && js.table.length){
-      tableRows = js.table.map((r, idx) => ({
-        city: r.city || r.entity || '',
-        province: r.province || '',
-        island: r.island || '',
-        min: (r.min != null) ? Number(r.min) : (r.min_value != null ? Number(r.min_value) : null),
-        min_date: r.min_date || r.min_date || '—',
-        max: (r.max != null) ? Number(r.max) : (r.max_value != null ? Number(r.max_value) : null),
-        max_date: r.max_date || r.max_date || '—',
-        mean: (r.mean != null) ? Number(r.mean) : (r.mean_value != null ? Number(r.mean_value) : null),
-        ref_mean: (r.ref_mean != null) ? Number(r.ref_mean) : null,
-        idx: idx+1
-      }));
-
-      // compute fallback ref_mean if missing:
-      const needCompute = tableRows.some(tr => tr.ref_mean == null);
-      if(needCompute){
-        // group by island to compute island-wise mean of city means
-        const byIsland = {};
-        tableRows.forEach(tr => {
-          const isl = (tr.island || '').toString();
-          if(!byIsland[isl]) byIsland[isl] = [];
-          if(tr.mean != null) byIsland[isl].push(tr.mean);
-        });
-        const islandMean = {};
-        for(const k of Object.keys(byIsland)){
-          const vals = byIsland[k];
-          islandMean[k] = (vals && vals.length) ? (vals.reduce((a,b)=>a+b,0)/vals.length) : null;
-        }
-        // national mean:
-        const allMeans = tableRows.map(t=>t.mean).filter(v=>v!=null);
-        const nationalMean = (allMeans.length) ? (allMeans.reduce((a,b)=>a+b,0)/allMeans.length) : null;
-
-        tableRows = tableRows.map(tr => {
-          if(tr.ref_mean != null) return tr;
-          if(bucket_scope === 'island'){
-            const candidate = islandMean[(tr.island||'').toString()] ?? null;
-            tr.ref_mean = candidate;
-          } else {
-            tr.ref_mean = nationalMean;
-          }
-          return tr;
-        });
-      }
-    }
-
+   
     if(tableRows.length > 300){
       showMapValidation(`Menampilkan ${tableRows.length} baris untuk "Semua Pulau" — mungkin butuh beberapa detik untuk render.` );
       setTimeout(hideMapValidation, 4000);
@@ -1549,19 +1529,37 @@ function renderPredChart(labels, actual, predicted, cityLabel) {
     },
     options: {
       plugins: {
-        title: {
-          display: true,
-          text: 'Aktual vs Prediksi (Gradient Boosting)',
-          color: '#000',
-          font: { size: 14, weight: 'bold' }
-        },
-        legend: {
-          labels: {
-            color: '#333', // warna teks legend
-            font: { size: 12 }
-          }
-        }
+  title: {
+    display: true,
+    text: 'Aktual vs Prediksi (Gradient Boosting)',
+    color: '#000',
+    font: { size: 14, weight: 'bold' }
+  },
+  legend: {
+    labels: {
+      color: '#333',
+      font: { size: 12 }
+    }
+  },
+  tooltip: {
+    enabled: true,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    titleFont: { size: 13, weight: 'bold' },
+    bodyFont: { size: 12 },
+    padding: 10,
+    callbacks: {
+      label: function(context) {
+        const val = context.parsed.y;
+        return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(val));
       },
+      title: function(context) {
+        const label = context[0].label;
+        return `Tanggal: ${label}`;
+      }
+    }
+  }
+},
+
       scales: {
         x: {
           title: {
@@ -1832,7 +1830,7 @@ async function fetchPredictRange(citySlug, startISO, endISO, mode = 'test') {
   loadCities();
 })();
 
-async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'test' }) {
+async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
   if (!entitySlug) return;
   const loading = document.getElementById('quickPredLoading');
   const resultBox = document.getElementById('quickPredResult');
@@ -1859,10 +1857,11 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'test' }) {
 
   // UI prepare
   if (loading) loading.style.display = '';
+  
   if (resultBox) resultBox.style.display = 'none';
 
   try {
-    const url = `/api/quick_predict?city=${encodeURIComponent(entitySlug)}&mode=${encodeURIComponent(opts.mode||'test')}`;
+    const url = `/api/quick_predict?city=${encodeURIComponent(entitySlug)}&mode=${encodeURIComponent(opts.mode||'real')}`;
     const res = await fetch(url);
     if (!res.ok) {
       const t = await res.text().catch(()=>res.statusText);
@@ -2813,6 +2812,240 @@ async function saveAndPredict() {
 
 window._uploadTrendChart = window._uploadTrendChart || null;
 window._uploadPredChart  = window._uploadPredChart  || null;
+async function getNearestEntity(lat, lon) {
+  // load JSON keyed object
+  const res = await fetch('/static/city_coords.json');
+  const data = await res.json();
+
+  // convert jadi array of [slug, {lat, lng, label}]
+  const entities = Object.entries(data);
+
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const toRad = (v) => v * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const [slug, e] of entities) {
+    const d = haversineKm(lat, lon, e.lat, e.lng);
+    if (d < bestDist) {
+      bestDist = d;
+      best = { slug, name: e.label, dist: d };
+    }
+  }
+
+  return best;
+}
+
+document.getElementById('scroll-to-beranda')?.addEventListener('click', () => {
+  // 1️⃣ collapse hero & scroll ke beranda
+  document.body.classList.add('hero-collapsed');
+  document.querySelector('.nav-link[data-section="beranda"]')?.click();
+  document.getElementById('beranda')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  history.replaceState(null, '', '#beranda');
+
+  // 2️⃣ minta izin lokasi user
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      console.log("Lokasi user:", lat, lon);
+
+      // 3️⃣ load daftar koordinat kota
+      const res = await fetch('/static/city_coords.json');
+      const data = await res.json();
+      const entities = Object.entries(data);
+
+      // hitung kota terdekat
+      function haversineKm(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const toRad = (v) => v * Math.PI / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+        return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      let best = null, bestDist = Infinity;
+      for (const [slug, e] of entities) {
+        const d = haversineKm(lat, lon, e.lat, e.lng);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { slug, label: e.label, dist: d };
+        }
+      }
+
+      // 💥 di sini nih potongan kamu masuk
+      const sel = document.getElementById('quick_kabupaten');
+      const info = document.getElementById('auto-location');
+
+      if (best) {
+        console.log(`Kota terdekat: ${best.label} (${best.slug}) [${bestDist.toFixed(1)} km]`);
+
+        // set dropdown
+        if (sel) {
+          sel.value = best.slug;
+          sel.dispatchEvent(new Event('change'));
+        }
+
+        // tampilkan teks lokasi
+        if (info) {
+          info.textContent = `Lokasi terdekat Anda terdeteksi di ${best.label}`;
+        }
+
+        // panggil API untuk prediksi otomatis (opsional)
+        fetch(`/api/quick_predict?city=${best.slug}&mode=real`)
+          .then(r => r.json())
+          .then(data => console.log("Prediksi otomatis:", data))
+          .catch(err => console.error("Error prediksi otomatis:", err));
+      }
+    }, (err) => {
+      console.warn("User menolak lokasi:", err);
+    });
+  }
+});
+
+
+async function initQuickSelectTom() {
+  const sel = document.getElementById('quick_kabupaten');
+  if (!sel) return;
+
+  // fetch city list
+  let cities = [];
+  try {
+    const resp = await fetch('/api/cities_full', { cache: 'no-store' });
+    cities = await resp.json();
+  } catch (e) {
+    console.warn('failed load cities_full', e);
+    cities = [];
+  }
+
+  // fill select
+  sel.innerHTML = '<option value="">-- Pilih --</option>';
+  cities.forEach(item => {
+    const slug = item.entity || item.slug || (item.label||'').toLowerCase().replace(/\s+/g,'_');
+    const label = item.label || slug;
+    const o = document.createElement('option'); o.value = slug; o.textContent = label;
+    sel.appendChild(o);
+  });
+
+  // init TomSelect (search inside dropdown)
+  let ts = null;
+  try {
+    ts = new TomSelect(sel, {
+      allowEmptyOption: true,
+      maxOptions: 100,
+      hideSelected:true,
+      searchField: ['text'],
+      placeholder: '-- Pilih atau ketik untuk mencari --',
+      // keep dropdown attached to body to avoid overflow issues (optional)
+      // dropdownParent: 'body',
+      render: {
+        option: function(data, escape) {
+          return '<div>' + escape(data.text) + '</div>';
+        }
+      }
+    });
+  } catch (e) {
+    console.warn('TomSelect init failed', e);
+  }
+
+  // expose instance for programmatic set (if needed elsewhere)
+  sel._ts = ts || null;
+}
+
+// call on DOM ready
+document.addEventListener('DOMContentLoaded', initQuickSelectTom);
+
+/* ---------- auto-detect location & programmatically set dropdown ---------- */
+
+async function autoDetectLocationAndSelect() {
+  const sel = document.getElementById('quick_kabupaten');
+  if (!sel) return;
+
+  // pastikan opsi sudah dimuat
+  if (!sel.options.length || sel.options.length <= 1) {
+    await initQuickSelectTom();
+    await new Promise(r => setTimeout(r, 120));
+  }
+
+  // pastikan geolocation support
+  if (!navigator.geolocation) {
+    console.warn('Geolocation tidak didukung browser ini.');
+    return;
+  }
+
+  // ambil posisi user
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+
+    try {
+      const resp = await fetch('/static/city_coords.json', { cache: 'no-store' });
+      if (!resp.ok) throw new Error('File city_coords.json tidak ditemukan.');
+      const data = await resp.json();
+
+      // hitung jarak terdekat
+      const toRad = deg => deg * Math.PI / 180;
+      const hav = (lat1, lon1, lat2, lon2) => {
+        const R = 6371;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) ** 2 +
+                  Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+        return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+
+      let best = null;
+      let bestDist = Infinity;
+      for (const [slug, city] of Object.entries(data)) {
+        if (!city.lat || !city.lng) continue;
+        const d = hav(lat, lon, city.lat, city.lng);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { slug, label: city.label, dist: d };
+        }
+      }
+
+      const info = document.getElementById('auto-location');
+
+      // kalau lokasi ditemukan
+      if (best) {
+        // update info teks
+        if (info) info.textContent = `📍 Lokasi terdekat Anda terdeteksi di ${best.label}`;
+
+        // pastikan dropdown diisi otomatis
+        if (sel._ts) {
+          sel._ts.setValue(best.slug);
+        } else {
+          sel.value = best.slug;
+        }
+
+        // trigger event change biar langsung load prediksi
+        sel.dispatchEvent(new Event('change'));
+      } else {
+        // kalau tidak ketemu kota terdekat
+        if (info) info.textContent = "📍 Tidak dapat mendeteksi lokasi Anda. Silakan pilih manual.";
+      }
+
+    } catch (err) {
+      console.warn("autoDetectLocationAndSelect error:", err);
+      const info = document.getElementById('auto-location');
+      if (info) info.textContent = "📍 Tidak dapat mendeteksi lokasi Anda. Silakan pilih manual.";
+    }
+  }, (err) => {
+    console.warn('Gagal mendeteksi lokasi:', err);
+    const info = document.getElementById('auto-location');
+    if (info) info.textContent = "📍 Tidak dapat mendeteksi lokasi Anda. Silakan pilih manual.";
+  }, { timeout: 10000 });
+}
+
 
 function fmtID(n){
   if (n == null || Number.isNaN(n)) return '-';

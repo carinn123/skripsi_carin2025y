@@ -1,13 +1,14 @@
 /* =========================
    THEME / TOKENS
    ========================= */
+   
 :root{
      --ivory: #F7F5EE;
       --surface: #FFFFFF;
-      --line: #E7E5DC;
+      --line: #ecebe6;
       --green: #2F6D3B;
       --green-600: #285E33;
-      --soft-green: #EBF4EE;
+      --soft-green: #fafcfb;
       --text: #1F2937;
       --muted: #6B7280;
       --shadow: 0 8px 24px rgba(17, 24, 39, .08);
@@ -58,7 +59,7 @@ html{scroll-behavior:smooth}
    ========================= */
 header.topbar{
   position:sticky; top:0; z-index:50;
-  background:rgba(255,255,255,.82);
+  background:rgb(255, 255, 255);
   backdrop-filter:saturate(120%) blur(10px);
   border-bottom:1px solid var(--line);
   box-shadow: 0 6px 18px rgba(17,24,39,.06);
@@ -200,7 +201,7 @@ select:focus,input:focus{
 
 /* Charts / holders */
 .chart-container{
-  background: #FAFAF8; border:1px dashed var(--line); border-radius:12px; padding:1rem; min-height:320px;
+  background: #ffffff; border:1px dashed var(--line); border-radius:12px; padding:1rem; min-height:320px;
   display:flex; align-items:center; justify-content:center; position:relative;
   transform: translateY(10px); opacity:0; transition:.6s ease;
 }
@@ -291,7 +292,7 @@ select:focus,input:focus{
   font-size: 0.95rem;
 }
 .nice-table thead th{
-  background: #F9FAF8;
+  background: #fcfcfc;
   border-bottom:1px solid var(--line);
   padding:.8rem .9rem;
   text-align:left;
@@ -304,7 +305,7 @@ select:focus,input:focus{
   vertical-align: middle;
 }
 .nice-table tbody tr:hover{
-  background: #FCFDFB;
+  background: #fefffd;
 }
 .nice-table td:last-child,
 .nice-table td:nth-last-child(1),
@@ -1475,3 +1476,81 @@ html { scroll-padding-top: 84px; } /* sesuaikan jika perlu */
   #rc_table_pager .pager-input { width:2.8rem; }
 }
 
+
+#auto-location {
+  margin-top: 0.5rem;
+  color: #2c3e50;
+  font-weight: 500;
+  font-style: italic;
+  transition: opacity 0.3s ease;
+}
+
+
+/* ===== Quick Predict Dropdown Styles ===== */
+.input-groups {
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+
+#quick_kabupaten {
+  min-width: 320px;
+  padding: 0.5rem;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.95rem;
+  color: #333;
+}
+
+/* Styling info lokasi */
+.auto-location {
+  margin-top: 0.45rem;
+  font-style: italic;
+  color: #2c3e50;
+}
+
+/* Area hasil prediksi cepat */
+.quick-pred-container {
+  display: none;
+  border: 1px solid #fffbfb;
+  padding: 0.8rem;
+  border-radius: 6px;
+  background: #ffffff;
+  max-width: 640px;
+  margin-top: 1rem;
+}
+
+.quick-pred-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.3rem;
+}
+
+.quick-pred-key {
+  width: 110px;
+  color: #666;
+  font-weight: 600;
+}
+
+.quick-pred-val {
+  color: #111;
+  font-size: 1.05rem;
+}
+
+/* Tambahan styling untuk Tom Select */
+.ts-control {
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  box-shadow: none;
+  padding: 0.4rem 0.6rem;
+}
+
+.ts-dropdown {
+  border-radius: 8px;
+  border-color: #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
