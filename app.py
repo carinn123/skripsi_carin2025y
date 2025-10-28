@@ -262,7 +262,7 @@ def _compute_last_actual_dates(path_xlsx: str) -> dict:
     raw = raw.dropna(subset=[date_col]).sort_values(date_col)
     value_cols = raw.columns[1:]
 
-    cutoff = pd.Timestamp("2025-10-22")  # batas akhir data nyata
+    cutoff = pd.Timestamp("2025-10-27")  # batas akhir data nyata
     last = {}
     for c in value_cols:
         ent = re.sub(r"\s+", "_", str(c).strip().lower())
@@ -1517,6 +1517,10 @@ def api_choropleth():
                         # national mean (exclude None)
                         vals_all = [v for v in prov_vals["value"].tolist() if v is not None]
                         national_mean = _safe_float_or_none(np.mean(vals_all) if vals_all else None)
+                        # pakai rata-rata per-kota (city_stats.mean_val) untuk national mean
+                        city_vals = [ _safe_float_or_none(v) for v in city_stats["mean_val"].tolist() if v is not None ]
+                        rata_ratanasional = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
+
                         data_out = []
                         buckets_out = None
 
@@ -1552,7 +1556,8 @@ def api_choropleth():
                                         "island": key,
                                         "n_cities": int(getattr(r, "n_cities", 0) or 0),
                                         "island_mean": island_means.get(island_key),
-                                        "national_mean": national_mean
+                                        "national_mean": national_mean,
+                                        "national_means": rata_ratanasional
                                     })
                         else:
                             vals = [v for v in prov_vals["value"].tolist() if v is not None]
@@ -1690,7 +1695,9 @@ def api_choropleth():
                                         "mean": _safe_float_or_none(getattr(r, "mean_value", None)),
                                         "count": int(getattr(r, "count", 0) or 0),
                                         "island_mean": island_means.get(island_key),
+                                        "rata_ratanasional": rata_ratanasional,
                                         "national_mean": national_mean
+                                        
                                     })
                             else:
                                 table_rows = []
@@ -1708,7 +1715,9 @@ def api_choropleth():
                             "buckets": buckets_out,
                             "data": data_out,
                             "count" : len(table_rows),
-                            "table": table_rows
+                            "table": table_rows,
+                            "rata_ratanasional": rata_ratanasional,
+
                         }
                         return jsonify(_sanitize_for_json(resp))
 
@@ -1760,6 +1769,10 @@ def api_choropleth():
         island_means = { _isl_key_emit(k): _safe_float_or_none(v) for k,v in island_means_series.items() }
         vals_all = [v for v in prov_vals["value"].tolist() if v is not None]
         national_mean = _safe_float_or_none(np.mean(vals_all) if vals_all else None)
+        # national mean = rata2 dari semua city means (lebih tepat)
+        city_vals = [ _safe_float_or_none(v) for v in city_stats["mean_val"].tolist() if v is not None ]
+        rata_ratanasional = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
+
         data_out = []
         buckets_out = None
 
@@ -1851,7 +1864,9 @@ def api_choropleth():
             "last_actual": last_actual,
             "buckets": buckets_out,
             "data": data_out,
-            "table": table_rows
+            "table": table_rows,
+            "rata_ratanasional": rata_ratanasional,
+
         }
         probs = _find_non_json_numbers(resp)
         if probs:

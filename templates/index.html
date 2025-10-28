@@ -69,7 +69,7 @@
               <option>2023</option><option>2024</option><option>2025</option>
             </select>
           </div>
-          <div class="input-group">
+          <!-- <div class="input-group">
             <label for="b_bulan">Pilih Bulan (opsional)</label>
             <select id="b_bulan">
               <option value="">— Semua Bulan —</option>
@@ -87,7 +87,7 @@
               <option value="">— Semua Minggu —</option>
               <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
             </select>
-          </div>
+          </div> -->
           <div class="input-group">
             <button class="btn" onclick="showMapBeranda()">Tampilkan <span class="loading" id="b_loading" style="display:none;"></span></button>
           </div>
@@ -105,6 +105,9 @@
         <span><i style="background:#f1c40f"></i> Sedang</span>
         <span><i style="background:#e74c3c"></i> Tinggi</span>
       </div>
+      <p id="legend_national_mean" style="margin-top:6px;font-size:0.95rem;color:#333;">
+  Rata-rata Nasional (per kota): -
+</p>
 
       <div class="stats-grid" style="margin-top:1rem">
         <div class="stat-card"><div class="stat-value" id="statPulau">-</div><div class="stat-label">Pulau</div></div>

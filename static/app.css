@@ -1582,3 +1582,22 @@ html { scroll-padding-top: 84px; } /* sesuaikan jika perlu */
 #beranda .input-group:has(#b_minggu) {
   display: none !important;
 }
+
+
+.national-mean-wrap {
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+  color: #333;
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.national-mean-value {
+  font-weight: 700;
+  color: #111;
+}
+.national-mean-hint {
+  color: #666;
+  font-size: 0.9rem;
+}

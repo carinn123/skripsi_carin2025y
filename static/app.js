@@ -673,6 +673,38 @@ async function showMapBeranda(event){
       return;
     }
 
+    
+    // === tampilkan rata-rata nasional per kota (rata_ratanasional) ===
+// === tampilkan rata-rata nasional per kota (rata_ratanasional) ===
+console.log('DEBUG: js.rata_ratanasional =>', js && js.rata_ratanasional);
+const rataValServer = js && (js.rata_ratanasional ?? js.rata_ratanasional_value ?? js.rata_rata_nasional);
+if (rataValServer != null) {
+  const el = document.getElementById('legend_national_mean');
+  const formatted = (typeof rupiah === 'function')
+    ? 'Rp ' + rupiah(Math.round(rataValServer))
+    : 'Rp ' + Math.round(rataValServer).toLocaleString('id-ID');
+  if (el) {
+    el.textContent = `Rata-rata Nasional (per-kota): ${formatted}`;
+  } else {
+    console.warn('legend_national_mean element not found');
+    // optionally create it dynamically:
+    const container = document.querySelector('.legend') || document.body;
+    const p = document.createElement('p');
+    p.id = 'legend_national_mean';
+    p.style.marginTop = '8px';
+    p.style.fontSize = '0.95rem';
+    p.style.color = '#214';
+    p.style.fontWeight = '600';
+    p.innerHTML = `Rata-rata Nasional (per-kota): ${formatted}<br><small style="font-weight:400;color:#666">(dihitung dari rata-rata kota sesuai filter)</small>`;
+    container.insertAdjacentElement('afterend', p);
+  }
+} else {
+  // no value returned: keep default text / clear previous
+  const el = document.getElementById('legend_national_mean');
+  if (el) el.textContent = 'Rata-rata Nasional (per-kota): - (tidak ada data untuk filter)';
+}
+
+
     const m = ensureMap();
     const gj = await getProvGeoJSON();
 
@@ -2896,7 +2928,7 @@ document.getElementById('scroll-to-beranda')?.addEventListener('click', () => {
 
         // tampilkan teks lokasi
         if (info) {
-          info.textContent = `Lokasi terdekat Anda terdeteksi di ${best.label}`;
+          info.textContent = `Lokasi terdekat Anda berdasarkan Daftar Kota terdeteksi di ${best.label}`;
         }
 
         // panggil API untuk prediksi otomatis (opsional)
