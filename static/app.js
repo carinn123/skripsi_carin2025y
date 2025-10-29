@@ -726,13 +726,13 @@ if (rataValServer != null) {
         const val = (valueRaw == null) ? null : Math.round(Number(valueRaw));
         const cat = rec ? (rec.cat || rec.category || 'no-data') : 'no-data';
         let meta = '';
-        if (js.mode === 'predicted' || js.generated_at || js.model_version) {
-          const gen = js.generated_at ? `Generated: ${js.generated_at}` : '';
-          const mv  = js.model_version ? `Model: ${js.model_version}` : '';
-          meta = `<br/><small style="color:#6b7280">${[gen, mv].filter(Boolean).join(' • ')}</small>`;
-        }
+        // if (js.mode === 'predicted' || js.generated_at || js.model_version) {
+        //   // const gen = js.generated_at ? `Generated: ${js.generated_at}` : '';
+        //   const mv  = js.model_version ? `Model: ${js.model_version}` : '';
+        //   // meta = `<br/><small style="color:#6b7280">${[gen, mv].filter(Boolean).join(' • ')}</small>`;
+        // }
         const nCitiesInfo = rec && rec.n_cities ? `<br/><small>Jumlah kota: ${rec.n_cities}</small>` : '';
-        layer.bindPopup(`<b>${rawn}</b><br/>${val ? ('Rp '+rupiah(val)) : '—'}<br/>Kategori: ${escapeHtml(cat)}${nCitiesInfo}${meta}`);
+        layer.bindPopup(`<b>${rawn}</b><br/>${val ? ('Rp '+rupiah(val)) : '—'}<br/>Kategori: ${escapeHtml(cat)}${nCitiesInfo}`);
 
         layer.on('click', function(e){
           const provName = (feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "").trim();

@@ -16,6 +16,10 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import math
 import time
+import os
+
+GOOGLE_API_KEY = os.getenv("AIzaSyCA1O5IxSkSg_uHpB5ITbk14CUqhnA_YBk")
+
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
@@ -1184,7 +1188,7 @@ def _load_precomputed_choropleth(year, month=None, week=None, island=None):
                 "period_year": py,
                 "period_month": pm,
                 "period_week": pw,
-                "generated_at": generated_at,
+                # "generated_at": generated_at,
                 # date string parseable by pandas
                 "date": date_str,
                 # source file (helpful for debugging)
