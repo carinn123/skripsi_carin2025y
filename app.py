@@ -2540,8 +2540,28 @@ def api_provinces():
     except Exception as e:
         return jsonify({"error": f"Gagal baca provinsi: {e}"}), 500
 
+# --- Normalisasi nama kota agar rapi ---
+def normalizes_city_name(name: str) -> str:
+    if not name:
+        return ""
+    name = name.strip().lower()
+    name = name.replace("_", " ").replace("-", " ").replace(".", " ")
+    name = " ".join(name.split())  # hapus spasi ganda
+    # ubah prefiks kab/kota jadi bentuk formal
+    if name.startswith("kab "):
+        name = "kabupaten " + name[4:]
+    elif name.startswith("kabupaten "):
+        pass
+    elif name.startswith("kota "):
+        pass
+    # kapitalisasi tiap kata
+    return " ".join([w.capitalize() for w in name.split()])
+
+# Terapkan ke semua nama di page_cities
+
 @app.route("/api/region_summary")
 def api_region_summary():
+    
     mode  = (request.args.get("mode") or "island").strip().lower()
     value = (request.args.get("value") or "").strip()
     predict = str(request.args.get("predict") or "0").strip()
@@ -2573,9 +2593,8 @@ def api_region_summary():
     # init containers early
     results = {}
     errors = {}
-
     if horizon <= 0 or horizon > RC_PRED_HORIZON_LIMIT:
-        return jsonify({"error": f"horizon harus antara 1 dan {RC_PRED_HORIZON_LIMIT} hari"}), 400
+            return jsonify({"error": f"horizon harus antara 1 dan {RC_PRED_HORIZON_LIMIT} hari"}), 400
 
     try:
         page = int(request.args.get("page") or 1)
@@ -2585,194 +2604,232 @@ def api_region_summary():
     if page < 1: page = 1
     page_size = max(1, min(page_size, 200))
 
+    # load dataframe
+    df = LONG_DF[["entity","date","value"]].copy()
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    df = df.dropna(subset=["entity","date","value"])
+    df["province"] = df["entity"].map(ENTITY_TO_PROVINCE)
+    df = df.dropna(subset=["province"])
+    df["island"] = df["province"].str.upper().map(PROVINCE_TO_ISLAND)
+    df["city"] = df["entity"]
+
+    # --- keep a full copy of the dataframe BEFORE applying year/month/week filters
+    full_df = df.copy()
+
+    # apply year/month/week filters to df (not full_df)
+    if year is not None:
+        df = df[df["date"].dt.year == year]
+    if month is not None:
+        df = df[df["date"].dt.month == month]
+    if week is not None and month is not None:
+        df["week_in_month"] = df["date"].apply(_week_of_month_int)
+        df = df[df["week_in_month"] == week]
+
+    # select sub by island/province
+    if mode == "island":
+        if value.lower() == "semua pulau":
+            sub = df.copy()
+        else:
+            sub = df[df["island"].str.casefold() == value.casefold()].copy()
+    else:
+        sub = df[df["province"].str.casefold() == value.casefold()].copy()
+
+    # if the filtered sub is empty, nothing to show
+    if sub.empty:
+        return jsonify({"mode": mode, "value": value, "count": 0, "rows": []})
+
+    # --- Normalisasi nama kota: buat city_key (untuk join/agg) dan city_display (untuk output) ---
+    def _make_city_key(s):
+        if not s or pd.isna(s):
+            return ""
+        s = str(s).strip().lower()
+        s = re.sub(r'[_\.\-]+', ' ', s)      # replace _ . - with space
+        s = re.sub(r'\s+', ' ', s).strip()   # collapse spaces
+        s = re.sub(r'^\bkab\s+', 'kabupaten ', s)  # kab -> kabupaten
+        return s
+
+    def _make_city_display_from_key(key):
+        if not key:
+            return ""
+        disp = " ".join([w.capitalize() for w in key.split()])
+        disp = re.sub(r'^\bKabupaten\s+', 'Kabupaten ', disp)
+        disp = re.sub(r'^\bKota\s+', 'Kota ', disp)
+        return disp
+
+    # apply to sub and full_df (so future lookups are consistent)
+    sub['city_key'] = sub['city'].apply(_make_city_key)
+    sub['city_display'] = sub['city_key'].apply(_make_city_display_from_key)
+    full_df['city_key'] = full_df['city'].apply(_make_city_key)
+
+    # fallback: if city_display empty, use original cleaned title of city
+    sub.loc[sub['city_display'].str.strip() == "", 'city_display'] = (
+        sub.loc[sub['city_display'].str.strip() == "", 'city']
+            .astype(str).str.strip().str.title()
+    )
+
+    # --- build paged list using city_key and display map ---
+    city_key_list = sorted({ str(x).strip() for x in sub['city_key'].unique() if pd.notna(x) and str(x).strip() })
+    city_display_map = sub.drop_duplicates('city_key').set_index('city_key')['city_display'].to_dict()
+    total_cities = len(city_key_list)
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_city_keys = city_key_list[start:end] if start < total_cities else []
+    # page_cities (display names) - used in API output only
+    page_cities = [ city_display_map.get(k, k) for k in page_city_keys ]
+
+    # prepare time-based columns and monthly aggregation using city_key
+    sub["year"] = sub["date"].dt.year
+    sub["month"] = sub["date"].dt.month
+    monthly = sub.groupby(["city_key","year","month"])["value"].mean().reset_index(name="month_avg")
+
+    # precompute min/max idx safely (by city_key)
     try:
-        df = LONG_DF[["entity","date","value"]].copy()
-        df["date"] = pd.to_datetime(df["date"]).dt.normalize()
-        df = df.dropna(subset=["entity","date","value"])
-        df["province"] = df["entity"].map(ENTITY_TO_PROVINCE)
-        df = df.dropna(subset=["province"])
-        df["island"] = df["province"].str.upper().map(PROVINCE_TO_ISLAND)
-        df["city"] = df["entity"]
+        min_idx = sub.groupby("city_key")["value"].idxmin()
+        max_idx = sub.groupby("city_key")["value"].idxmax()
+    except Exception:
+        min_idx = {}
+        max_idx = {}
 
-        # --- keep a full copy of the dataframe BEFORE applying year/month/week filters
-        full_df = df.copy()  # CHANGED: keep full history for things that should use full data
+    # city means computed FROM sub (sub already filtered by year/month/week)
+    try:
+        city_mean_df = sub.groupby("city_key", dropna=False).agg(mean_val=("value","mean")).reset_index()
+        # attach display
+        first_display = sub[['city_key','city_display']].drop_duplicates('city_key').set_index('city_key')
+        city_mean_df = city_mean_df.set_index('city_key').join(first_display, how='left').reset_index()
+        # keep column name 'city' for compatibility with older code paths (value is normalized key)
+        city_mean_df = city_mean_df.rename(columns={'city_key':'city'})
+        city_mean_df['city_display'] = city_mean_df['city_display'].fillna(city_mean_df['city'])
+    except Exception:
+        city_mean_df = pd.DataFrame(columns=['city','mean_val','city_display'])
 
-        if year is not None:
-            df = df[df["date"].dt.year == year]
-        if month is not None:
-            df = df[df["date"].dt.month == month]
-        if week is not None and month is not None:
-            df["week_in_month"] = df["date"].apply(_week_of_month_int)
-            df = df[df["week_in_month"] == week]
+    # attach province/island for each city using first occurrence in sub (index by city_key)
+    try:
+        city_meta = sub[['city_key','province','island']].drop_duplicates('city_key').set_index('city_key')
+    except Exception:
+        city_meta = pd.DataFrame(columns=['province','island'])
 
-        if mode == "island":
-            if value.lower() == "semua pulau":
-                sub = df.copy()
-            else:
-                sub = df[df["island"].str.casefold() == value.casefold()].copy()
-        else:
-            sub = df[df["province"].str.casefold() == value.casefold()].copy()
+    # merge meta with means (city_mean_df.city contains the normalized key)
+    if not city_mean_df.empty and not city_meta.empty:
+        city_mean_df = city_mean_df.set_index('city').join(city_meta, how='left').reset_index()
+    else:
+        if "province" not in city_mean_df.columns:
+            city_mean_df["province"] = None
+        if "island" not in city_mean_df.columns:
+            city_mean_df["island"] = None
 
-        # if the filtered sub is empty, nothing to show for that time/window
-        if sub.empty:
-            return jsonify({"mode": mode, "value": value, "count": 0, "rows": []})
+    # safe maps keyed by normalized key (which we kept in 'city' column)
+    city_mean_map = { str(row['city']).strip(): _safe_float_or_none(row['mean_val']) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
+    city_prov_map = { str(row['city']).strip(): (str(row['province']).strip() if pd.notna(row.get('province')) else None) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
+    city_island_map = { str(row['city']).strip(): (str(row['island']).strip() if pd.notna(row.get('island')) else None) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
 
-        # Normalisasi cities: unique, trimmed strings (eliminates weird types/empty)
-        cities = sorted({ str(x).strip() for x in sub["city"].unique() if pd.notna(x) and str(x).strip() })
-        total_cities = len(cities)
+    # province-level aggregation (mean of city means) — used to compute island/national refs
+    if not city_mean_df.empty:
+        prov_vals = city_mean_df.groupby("province", dropna=False, as_index=False).agg(value=("mean_val","mean"), n_cities=("city","nunique")).reset_index()
+        prov_vals["value"] = prov_vals["value"].apply(_safe_float_or_none)
+        prov_vals["province"] = prov_vals["province"].apply(lambda x: None if pd.isna(x) else str(x).strip())
+        prov_vals["island"] = prov_vals["province"].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
+        # fill missing island from city_island_map if possible
+        for i, row in prov_vals.iterrows():
+            if not row.get("island"):
+                vals = city_mean_df.loc[city_mean_df["province"].astype(str).str.strip() == (row.get("province") or ""), "island"].dropna().unique()
+                prov_vals.at[i, "island"] = vals[0] if len(vals) else None
+    else:
+        prov_vals = pd.DataFrame(columns=["province","value","n_cities","island"])
 
-        start = (page - 1) * page_size
-        end = start + page_size
-        page_cities = cities[start:end] if start < total_cities else []
+    # compute island_means and national_mean
+    try:
+        island_means_series = prov_vals.groupby("island", dropna=False)["value"].mean()
+        island_means = { (k if (k is not None and not (isinstance(k,float) and pd.isna(k))) else "unknown"): _safe_float_or_none(v) for k,v in island_means_series.items() }
+    except Exception:
+        island_means = {}
 
-        rows = []
-        sub["year"] = sub["date"].dt.year
-        sub["month"] = sub["date"].dt.month
-        monthly = sub.groupby(["city","year","month"])["value"].mean().reset_index(name="month_avg")
+    try:
+        city_vals = [ _safe_float_or_none(v) for v in city_mean_df["mean_val"].tolist() if v is not None ]
+        national_mean = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
+    except Exception:
+        national_mean = None
 
-        # precompute min/max idx safely (only for cities present in the filtered sub)
-        try:
-            min_idx = sub.groupby("city")["value"].idxmin()
-            max_idx = sub.groupby("city")["value"].idxmax()
-        except Exception:
-            min_idx = {}
-            max_idx = {}
-               
-        try:
-            # city means computed FROM sub (sub already filtered by year/month/week)
-            city_mean_df = sub.groupby("city", dropna=False).agg(mean_val=("value", "mean")).reset_index()
-        except Exception:
-            city_mean_df = pd.DataFrame(columns=["city","mean_val"])
+    # helper predict (unchanged)
+    def _get_pred_for_entity(entity, horizon_days, model_mode_local):
+        key = (entity, horizon_days, model_mode_local)
+        now = time.time()
+        cached = _RC_PRED_CACHE.get(key)
+        if cached and now - cached["ts"] < RC_PRED_CACHE_TTL:
+            return cached["preds"]
+        preds = _recursive_predict(entity, days=horizon_days, mode=model_mode_local)
+        normalized = []
+        for p in preds:
+            try:
+                normalized.append({"date": pd.to_datetime(p["date"]).normalize(), "pred": float(p["pred"])} )
+            except Exception:
+                pass
+        _RC_PRED_CACHE[key] = {"ts": now, "preds": normalized}
+        return normalized
 
-        # attach province/island for each city using first occurrence in sub
-        try:
-            city_meta = sub[["city","province","island"]].drop_duplicates("city").set_index("city")
-        except Exception:
-            city_meta = pd.DataFrame(columns=["province","island"])
+    # --- non-predict: build rows for this page slice ---
+    rows = []
+    if not do_predict:
+        for offset_idx, city_key in enumerate(page_city_keys, start=start+1):
+            try:
+                # filter by normalized key
+                g = sub[sub["city_key"].astype(str).str.strip() == city_key].sort_values("date")
+                if g.empty:
+                    app.logger.debug("city not found in sub df (key): %s", city_key)
+                    continue
 
-        # merge meta with means
-        if not city_mean_df.empty and not city_meta.empty:
-            city_mean_df = city_mean_df.set_index("city").join(city_meta, how="left").reset_index()
-        else:
-            # ensure columns exist
-            if "province" not in city_mean_df.columns:
-                city_mean_df["province"] = None
-            if "island" not in city_mean_df.columns:
-                city_mean_df["island"] = None
-         # safe maps
-        city_mean_map = { str(row["city"]).strip(): _safe_float_or_none(row["mean_val"]) for _, row in city_mean_df.iterrows() if pd.notna(row["city"]) }
-        city_prov_map = { str(row["city"]).strip(): (str(row["province"]).strip() if pd.notna(row.get("province")) else None) for _, row in city_mean_df.iterrows() if pd.notna(row["city"]) }
-        city_island_map = { str(row["city"]).strip(): (str(row["island"]).strip() if pd.notna(row.get("island")) else None) for _, row in city_mean_df.iterrows() if pd.notna(row["city"]) }
+                g_all = full_df[full_df["city_key"].astype(str).str.strip() == city_key].sort_values("date")
 
-        # province-level aggregation (mean of city means) — used to compute island/national refs
-        if not city_mean_df.empty:
-            prov_vals = city_mean_df.groupby("province", dropna=False, as_index=False).agg(value=("mean_val","mean"), n_cities=("city","nunique")).reset_index()
-            prov_vals["value"] = prov_vals["value"].apply(_safe_float_or_none)
-            prov_vals["province"] = prov_vals["province"].apply(lambda x: None if pd.isna(x) else str(x).strip())
-            prov_vals["island"] = prov_vals["province"].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
-            # fill missing island from city_island_map if possible
-            for i, row in prov_vals.iterrows():
-                if not row.get("island"):
-                    vals = city_mean_df.loc[city_mean_df["province"].astype(str).str.strip() == (row.get("province") or ""), "island"].dropna().unique()
-                    prov_vals.at[i, "island"] = vals[0] if len(vals) else None
-        else:
-            prov_vals = pd.DataFrame(columns=["province","value","n_cities","island"])
-
-        # compute island_means and national_mean
-        try:
-            island_means_series = prov_vals.groupby("island", dropna=False)["value"].mean()
-            island_means = { (k if (k is not None and not (isinstance(k,float) and pd.isna(k))) else "unknown"): _safe_float_or_none(v) for k,v in island_means_series.items() }
-        except Exception:
-            island_means = {}
-
-        # NATIONAL mean = mean of all city means (absolute across cities for the chosen period)
-        try:
-            city_vals = [ _safe_float_or_none(v) for v in city_mean_df["mean_val"].tolist() if v is not None ]
-            national_mean = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
-        except Exception:
-            national_mean = None
-        # ---------- END NEW ----------
-
-        # helper predict (unchanged)
-        def _get_pred_for_entity(entity, horizon_days, model_mode_local):
-            key = (entity, horizon_days, model_mode_local)
-            now = time.time()
-            cached = _RC_PRED_CACHE.get(key)
-            if cached and now - cached["ts"] < RC_PRED_CACHE_TTL:
-                return cached["preds"]
-            preds = _recursive_predict(entity, days=horizon_days, mode=model_mode_local)
-            normalized = []
-            for p in preds:
+                # compute min/max and monthly stats based on g
+                min_value = min_date = max_value = max_date = None
                 try:
-                    normalized.append({"date": pd.to_datetime(p["date"]).normalize(), "pred": float(p["pred"])} )
+                    idx_min_local = g["value"].idxmin()
+                    minr = g.loc[idx_min_local]
+                    min_value = float(minr["value"]); min_date = minr["date"].date().isoformat()
                 except Exception:
-                    pass
-            _RC_PRED_CACHE[key] = {"ts": now, "preds": normalized}
-            return normalized
+                    min_value = min_date = None
 
-        # --- non-predict: build rows for this page slice ---
-        if not do_predict:
-            for offset_idx, city in enumerate(page_cities, start=start+1):
                 try:
-                    # g: data LIMITED to the selected period (year/month/week) — used for stats
-                    g = sub[sub["city"].astype(str).str.strip() == city].sort_values("date")
-                    if g.empty:
-                        app.logger.debug("city not found in sub df: %s", city)
-                        continue
+                    idx_max_local = g["value"].idxmax()
+                    maxr = g.loc[idx_max_local]
+                    max_value = float(maxr["value"]); max_date = maxr["date"].date().isoformat()
+                except Exception:
+                    max_value = max_date = None
 
-                    # g_all: full history for this city (used for last_actual / global lookups)
-                    g_all = full_df[full_df["city"].astype(str).str.strip() == city].sort_values("date")  # CHANGED
-                    min_value = min_date = max_value = max_date = None
-
-
-                    try:
-                        idx_min_local = g["value"].idxmin()
-                        minr = g.loc[idx_min_local]
-                        min_value = float(minr["value"]); min_date = minr["date"].date().isoformat()
-                    except Exception:
-                        min_value = min_date = None
-
-                    # safe min/max computed from g (i.e. limited to the requested period)
-                    try:
-                        idx_max_local = g["value"].idxmax()
-                        maxr = g.loc[idx_max_local]
-                        max_value = float(maxr["value"]); max_date = maxr["date"].date().isoformat()
-                    except Exception:
-                        max_value = max_date = None
-
-                    
+                mm_local = pd.DataFrame()
+                try:
+                    mm_local = g.groupby([g["date"].dt.year.rename("year"), g["date"].dt.month.rename("month")])["value"].mean().reset_index(name="month_avg")
+                except Exception:
                     mm_local = pd.DataFrame()
-                    try:
-                        mm_local = g.groupby([g["date"].dt.year.rename("year"), g["date"].dt.month.rename("month")])["value"].mean().reset_index(name="month_avg")
-                    except Exception:
-                        mm_local = pd.DataFrame()
 
-                    if not mm_local.empty:
-                        try:
-                            idxh = mm_local["month_avg"].idxmax()
-                            idxl = mm_local["month_avg"].idxmin()
-                            high_row = mm_local.loc[idxh]; low_row = mm_local.loc[idxl]
-                            avg_month_high = float(high_row["month_avg"])
-                            avg_month_high_month = int(high_row["month"])
-                            avg_month_high_year = int(high_row["year"])
-                            avg_month_low  = float(low_row["month_avg"])
-                            avg_month_low_month = int(low_row["month"])
-                            avg_month_low_year  = int(low_row["year"])
-                        except Exception:
-                            avg_month_high = avg_month_high_month = avg_month_high_year = None
-                            avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
-                    else:
+                if not mm_local.empty:
+                    try:
+                        idxh = mm_local["month_avg"].idxmax()
+                        idxl = mm_local["month_avg"].idxmin()
+                        high_row = mm_local.loc[idxh]; low_row = mm_local.loc[idxl]
+                        avg_month_high = float(high_row["month_avg"])
+                        avg_month_high_month = int(high_row["month"])
+                        avg_month_high_year = int(high_row["year"])
+                        avg_month_low  = float(low_row["month_avg"])
+                        avg_month_low_month = int(low_row["month"])
+                        avg_month_low_year  = int(low_row["year"])
+                    except Exception:
                         avg_month_high = avg_month_high_month = avg_month_high_year = None
                         avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
+                else:
+                    avg_month_high = avg_month_high_month = avg_month_high_year = None
+                    avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
 
-                    city_key = city
-                    mean_val = city_mean_map.get(city_key) if city_key in city_mean_map else (float(g["value"].mean()) if not g["value"].isna().all() else None)
-                    prov_val = g["province"].iloc[0] if "province" in g.columns and not g["province"].isna().all() else city_prov_map.get(city_key)
-                    isl_val = g["island"].iloc[0] if "island" in g.columns and not g["island"].isna().all() else city_island_map.get(city_key)
-                    island_key = (isl_val or "unknown")
-                    rows.append({
+                # display name and maps
+                city_display = city_display_map.get(city_key, city_key)
+                mean_val = city_mean_map.get(city_key) if city_key in city_mean_map else (float(g["value"].mean()) if not g["value"].isna().all() else None)
+                prov_val = g["province"].iloc[0] if "province" in g.columns and not g["province"].isna().all() else city_prov_map.get(city_key)
+                isl_val = g["island"].iloc[0] if "island" in g.columns and not g["island"].isna().all() else city_island_map.get(city_key)
+                island_key = (isl_val or "unknown")
+
+                rows.append({
                     "no": offset_idx,
-                    "city": city_key,
+                    "city": city_display,
                     "province": prov_val,
                     "island": island_key,
                     "min": _safe_float_or_none(min_value),
@@ -2790,23 +2847,24 @@ def api_region_summary():
                     "island_mean": island_means.get(isl_val if isl_val else "unknown"),
                     "national_mean": national_mean
                 })
-                except Exception as e:
-                    app.logger.exception("failed building non-predict row for city %s: %s", city, e)
-                    continue
+            except Exception as e:
+                app.logger.exception("failed building non-predict row for city_key %s: %s", city_key, e)
+                continue
 
-            safe_rows = [_sanitize_for_json(r) for r in rows]
-            return jsonify({
-                "mode": mode,
-                "value": value,
-                "count": int(total_cities),
-                "page": int(page),
-                "page_size": int(page_size),
-                "rows": safe_rows,
-                "predict": False
-            })
+        safe_rows = [_sanitize_for_json(r) for r in rows]
+        return jsonify({
+            "mode": mode,
+            "value": value,
+            "count": int(total_cities),
+            "page": int(page),
+            "page_size": int(page_size),
+            "rows": safe_rows,
+            "predict": False
+        })
 
-        # --- PREDICT MODE: first try precomputed choropleth (fast + consistent with /api/choropleth) ---
-        if do_predict:
+
+
+    if do_predict:
             try:
                 # try load precomputed (this function already handles month/week None)
                 pre = _load_precomputed_choropleth(year=year or full_df["date"].dt.year.max(), month=month, week=week, island=None)
@@ -3012,24 +3070,21 @@ def api_region_summary():
         # --- PREDICT MODE: build rows with predictions (runtime fallback) ---
         # (if you have runtime predict code below, it should return a response as well)
         # SAFE FALLBACK: jika tidak ada response di jalur predict, kembalikan pesan jelas agar Flask tidak return None
-        if do_predict:
-            app.logger.error("api_region_summary: predict requested but no valid response produced (precomputed missing/empty and runtime fallback did not return). "
-                             "mode=%s value=%s year=%s month=%s week=%s", mode, value, year, month, week)
-            return jsonify({
-                "error": "predict requested but no data available",
-                "mode": mode,
-                "value": value,
-                "count": 0,
-                "rows": [],
-                "predict": True,
-                "horizon_days": int(horizon),
-                "precomputed": pre is not None
-            }), 500
+    if do_predict:
+        app.logger.error("api_region_summary: predict requested but no valid response produced (precomputed missing/empty and runtime fallback did not return). "
+                            "mode=%s value=%s year=%s month=%s week=%s", mode, value, year, month, week)
+        return jsonify({
+            "error": "predict requested but no data available",
+            "mode": mode,
+            "value": value,
+            "count": 0,
+            "rows": [],
+            "predict": True,
+            "horizon_days": int(horizon),
+            "precomputed": pre is not None
+        }), 500
 
-    except Exception as e:
-        app.logger.exception("api_region_summary failed")
-        return jsonify({"error": f"Gagal memproses: {e}"}), 500
-
+    
 
 
 @app.route("/api/quick_predict")
