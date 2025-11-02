@@ -1601,3 +1601,113 @@ html { scroll-padding-top: 84px; } /* sesuaikan jika perlu */
   color: #666;
   font-size: 0.9rem;
 }
+/* ============================
+   About Me — smaller photo + step-aligned layout
+   (only affects .about-me-card)
+   ============================ */
+.about-me-card .about-me-content{
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* Foto: jauh lebih kecil, circle, cover */
+.about-me-card .about-me-photo{
+  flex: 0 0 auto;
+  width: 108px;               /* desktop size: adjust 96|108|120 */
+  height: 108px;
+  border-radius: 14px;        /* kalau mau lingkaran: 50% */
+  overflow: hidden;
+  box-shadow: 0 8px 20px rgba(17,24,39,0.08);
+  background: linear-gradient(180deg, rgba(47,109,59,0.06), rgba(47,109,59,0.02));
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+/* actual img */
+.about-me-card .about-me-photo .profile-photo,
+.about-me-card .about-me-photo img.profile-photo{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:cover;           /* crop agar proporsional */
+  border-radius: 10px;        /* konsisten dgn wrapper; ubah ke 50% untuk lingkaran */
+}
+
+/* Detail area mengambil sisa ruang */
+.about-me-card .about-me-details{
+  flex: 1 1 320px;
+  min-width: 220px;
+}
+
+/* Nama & role — sedikit penyesuaian ukuran */
+.about-me-card .dev-name{
+  margin: 0 0 0.25rem;
+  font-size:1.05rem;
+  font-weight:800;
+  color: var(--green-600);
+}
+.about-me-card .dev-role{
+  margin:0 0 0.75rem;
+  color:var(--muted);
+  font-weight:600;
+}
+
+/* Contact grid jadi lebih rapi — 2 kolom di desktop, 1 kolom di mobile */
+.about-me-card .contact-grid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 0.7rem 1rem;
+  margin-top: 0.6rem;
+  align-items:start;
+}
+.about-me-card .contact-item{
+  display:flex;
+  gap:0.75rem;
+  align-items:flex-start;
+}
+.about-me-card .contact-icon{
+  font-size:1.05rem;
+  width:34px;
+  height:34px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background: linear-gradient(135deg, rgba(47,109,59,0.12), rgba(47,109,59,0.06));
+  border-radius:8px;
+}
+
+/* kontak text */
+.about-me-card .contact-info strong{ display:block; font-weight:700; font-size:0.92rem; color:#111; }
+.about-me-card .contact-info p{ margin:0; font-size:0.88rem; color:var(--muted); line-height:1.25; }
+
+/* Dev bio spacing */
+.about-me-card .dev-bio{ margin-top:0.9rem; color:var(--text); font-size:0.95rem; line-height:1.6; }
+
+/* Responsive: stack foto di atas pada layar kecil */
+@media (max-width: 720px){
+  .about-me-card .about-me-content{
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .about-me-card .about-me-photo{
+    width:92px;
+    height:92px;
+    border-radius: 12px;
+  }
+  .about-me-card .about-me-details{ min-width: auto; }
+  .about-me-card .contact-grid{
+    grid-template-columns: 1fr;
+    gap:0.5rem;
+  }
+  .about-me-card .contact-item{ justify-content:center; }
+  .about-me-card .contact-info { text-align:center; }
+  .about-me-card .dev-bio { text-align:center; }
+}
+
+/* Optional: make the image clickable without layout jump */
+.about-me-card .about-me-photo a{ display:block; width:100%; height:100%; }
+
