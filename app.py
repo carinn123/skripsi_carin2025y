@@ -54,7 +54,8 @@ DATA_PATH = Path(os.getenv("DATA_PATH", str(BASE_DIR / "data" / "dataset.xlsx"))
 
 # MODELS dirs: bisa dioverride lewat env
 MODELS_DIR = Path(os.getenv("MODELS_DIR", str(BASE_DIR / "packs")))
-MODELS_DIR_PACKS = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "models")))
+MODELS_DIR_PACKS = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "120 test")))
+MODELS_30 = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "120 test")))
 
 ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
 CITY_COORDS_PATH = BASE_DIR / "static" / "city_coords.json"
@@ -266,7 +267,7 @@ def _compute_last_actual_dates(path_xlsx: str) -> dict:
     raw = raw.dropna(subset=[date_col]).sort_values(date_col)
     value_cols = raw.columns[1:]
 
-    cutoff = pd.Timestamp("2025-10-27")  # batas akhir data nyata
+    cutoff = pd.Timestamp("2025-10-30")  # batas akhir data nyata
     last = {}
     for c in value_cols:
         ent = re.sub(r"\s+", "_", str(c).strip().lower())
@@ -719,7 +720,7 @@ def _load_model_for_entity(entity: str, mode: str = "test"):
         return _MODEL_CACHE[cache_key]
 
     # pilih folder model berdasarkan mode
-    models_dir = MODELS_DIR_PACKS if str(mode).lower() == "real" else MODELS_DIR
+    models_dir = MODELS_30 if str(mode).lower() == "real" else MODELS_DIR
 
     # 1) Cari pack terlebih dulu (packs naming)
     files = sorted(models_dir.glob(f"{entity}*best_pack.joblib"))
@@ -782,7 +783,7 @@ def _load_model_for_entity(entity: str, mode: str = "test"):
             try:
                 mtime = files0.stat().st_mtime
                 mdate = pd.to_datetime(time.strftime("%Y-%m-%d", time.localtime(mtime)))
-                train_until = mdate - pd.Timedelta(days=1)
+                train_until = mdate - pd.Timedelta(days=120)
                 print(f">> [REAL] train_until inferred from file mtime: {train_until.date()}")
             except Exception:
                 train_until = None
@@ -855,8 +856,7 @@ def make_features_for_next(dfe: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     """
     Generator fitur untuk prediksi recursive H+1 yang
     *persis* sama dengan fitur training 'lag30':
-      ['lag_1','lag_30','month','dayofweek','time_index',
-       'is_end_of_year','is_new_year','is_eid_window']
+      ['lag_1','lag_30','month','dayofweek','time_index', 'is_end_of_year','is_new_year','is_eid_window']
     """
     df = dfe.sort_values("date").copy()
 
@@ -2330,6 +2330,54 @@ def api_predict_range():
         seen.add(p["date"])
         unique_pred.append(p)
     predicted_series = unique_pred
+    last_actual_iso = last_actual_dt.date().isoformat()
+    act_for_eval = [a for a in actual_series if a["date"] <= last_actual_iso]
+    pred_for_eval = [p for p in predicted_series if p["date"] <= last_actual_iso]
+
+    def _compute_eval_from_series_local(actual_series, predicted_series, min_samples=1):
+        try:
+            from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+            has_sk = True
+        except Exception:
+            has_sk = False
+
+        if not actual_series or not predicted_series:
+            return None
+        act_map = {a["date"]: a["value"] for a in actual_series}
+        pred_map = {p["date"]: p["value"] for p in predicted_series}
+        common = sorted(set(act_map.keys()) & set(pred_map.keys()))
+        if len(common) < (min_samples or 1):
+            return None
+        y_true = np.array([act_map[d] for d in common], dtype=float)
+        y_pred = np.array([pred_map[d] for d in common], dtype=float)
+        if has_sk:
+            mae = float(mean_absolute_error(y_true, y_pred))
+            mse = float(mean_squared_error(y_true, y_pred))
+        else:
+            mae = float(np.mean(np.abs(y_true - y_pred)))
+            mse = float(np.mean((y_true - y_pred) ** 2))
+        rmse = float(math.sqrt(mse))
+        nz = (y_true != 0)
+        mape = float(np.mean(np.abs((y_true[nz] - y_pred[nz]) / y_true[nz]))) if nz.sum() > 0 else None
+        if has_sk:
+            try:
+                r2 = float(r2_score(y_true, y_pred))
+            except Exception:
+                r2 = None
+        else:
+            try:
+                ss_res = float(np.sum((y_true - y_pred) ** 2))
+                ss_tot = float(np.sum((y_true - np.mean(y_true)) ** 2))
+                r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else None
+            except Exception:
+                r2 = None
+        return {"mae": mae, "mse": mse, "rmse": rmse, "mape": mape, "r2": r2, "n": len(common)}
+
+    runtime_eval = None
+    if mode == "real":
+        runtime_eval = _compute_eval_from_series_local(act_for_eval, pred_for_eval, min_samples=1)
+        print(f"DEBUG runtime_eval (mode=real): {runtime_eval}")
+
 
     viz_roll = int((request.args.get("viz_roll") or "0").strip() or 0)  # default 0 (tanpa smoothing)
 
@@ -2381,6 +2429,10 @@ def api_predict_range():
         "summary": {
         "actual": summary_act,
         "predicted": summary_pred
+    },
+    "eval": {
+        "excel": eval_metrics,     # tetap ambil dari Excel seperti sekarang
+        "runtime": runtime_eval   # isi jika mode == "real"
     }
     })
 
@@ -2497,38 +2549,279 @@ def _candidates_for_eval_slug(s: str):
     cands.add(f"kab._{base}")
     return list(cands)
 
+
+from flask import request
+
+# Pastikan di file Flask kamu: from flask import request, jsonify
+# dan modul lain sudah diimport (re, pandas, etc.)
+
+
 @app.route("/api/eval_summary")
 def api_eval_summary():
     """
     Ambil evaluasi dari Excel untuk satu kota (slug/label longgar):
-    /api/eval_summary?city=<slug_or_label>
+    /api/eval_summary?city=<slug_or_label>&mode=test|real
+
+    - mode=test (default): kembalikan evaluasi dari Excel (sama seperti sekarang)
+    - mode=real: coba hitung runtime eval langsung (one-step preds <= last_actual)
     """
     q = (request.args.get("city", "") or "").strip()
+    mode = (request.args.get("mode") or "test").strip().lower()
+
     if not q:
         return jsonify({"error": "parameter 'city' wajib"}), 400
 
-    data = _load_eval_metrics()
-    if not data:
+    # --- helper: runtime eval computation (copy-safe, independent) ---
+    import math
+    import numpy as np
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+    def _compute_eval_from_series(actual_series, predicted_series, min_samples=5):
+        if not actual_series or not predicted_series:
+            return None
+        act_map = {a["date"]: a["value"] for a in actual_series}
+        pred_map = {p["date"]: p["value"] for p in predicted_series}
+        common_dates = sorted(set(act_map.keys()) & set(pred_map.keys()))
+        if len(common_dates) < min_samples:
+            return None
+        y_true = np.array([act_map[d] for d in common_dates], dtype=float)
+        y_pred = np.array([pred_map[d] for d in common_dates], dtype=float)
+        try:
+            mae = float(mean_absolute_error(y_true, y_pred))
+            mse = float(mean_squared_error(y_true, y_pred))
+            rmse = float(math.sqrt(mse))
+            nonzero_mask = (y_true != 0)
+            if nonzero_mask.sum() > 0:
+                mape = float(np.mean(np.abs((y_true[nonzero_mask] - y_pred[nonzero_mask]) / y_true[nonzero_mask])))
+            else:
+                mape = None
+            try:
+                r2 = float(r2_score(y_true, y_pred))
+            except Exception:
+                r2 = None
+            return {"mae": mae, "mse": mse, "rmse": rmse, "mape": mape, "r2": r2, "n": len(common_dates)}
+        except Exception as e:
+            print("DEBUG compute_eval error:", e)
+            return None
+
+    # --- load Excel metrics (if available) ---
+    excel_data = None
+    try:
+        excel_data = _load_eval_metrics()
+    except Exception as e:
+        print("DEBUG load excel eval error:", e)
+        excel_data = None
+
+    # helper: try several slug candidates like before and return (slug, rec)
+    def _find_in_excel(q):
+        if not excel_data:
+            return None
+        for key in _candidates_for_eval_slug(q):
+            rec = excel_data.get(key)
+            if rec:
+                return key, rec
+        q_norm = re.sub(r"[.\-]", " ", q.lower()).strip()
+        for slug, val in excel_data.items():
+            if re.sub(r"[.\-]", " ", val["label"].lower()).strip() == q_norm:
+                return slug, val
+        for slug, val in excel_data.items():
+            if q_norm in val["label"].lower():
+                return slug, val
+        return None
+
+    # --- If mode=real, compute runtime eval (best-effort) ---
+    if mode == "real":
+        # try to map incoming q to entity. Prefer Excel-slug mapping if available.
+        found = _find_in_excel(q)
+        candidate_slugs = []
+        if found:
+            candidate_slugs.append(found[0])
+        # always add the raw q as last resort
+        candidate_slugs.append(q)
+
+        runtime_result = None
+        runtime_errors = []
+
+        for candidate in candidate_slugs:
+            try:
+                # try map to internal entity (use your project mapping func)
+                try:
+                    entity = _slug_to_entity(candidate)
+                except Exception:
+                    # fallback: assume candidate already matches entity name
+                    entity = candidate
+
+                # load actuals
+                dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["date", "value"]].copy()
+                if dfe.empty:
+                    runtime_errors.append(f"no actuals for entity='{entity}'")
+                    continue
+                dfe["date"] = dfe["date"].dt.normalize()
+                last_actual_dt = LAST_ACTUAL.get(entity, dfe["date"].max().normalize())
+
+                # build actual_series up to cutoff
+                mask_act = dfe["date"] <= last_actual_dt
+                actual_series = [{"date": d.date().isoformat(), "value": float(v)} for d, v in zip(dfe.loc[mask_act, "date"], dfe.loc[mask_act, "value"])]
+                if not actual_series:
+                    runtime_errors.append(f"no actuals <= last_actual for entity='{entity}'")
+                    continue
+
+                # load one-step preds (use mode="real" to reflect runtime)
+                try:
+                    one_step = _one_step_predict_series(entity, mode="real")  # expected DataFrame with date,pred
+                except FileNotFoundError:
+                    runtime_errors.append("one-step model file not found")
+                    continue
+                except Exception as e:
+                    runtime_errors.append(f"failed loading one-step: {e}")
+                    continue
+
+                # filter preds up to cutoff
+                mask_pred = one_step["date"] <= last_actual_dt
+                if mask_pred.sum() == 0:
+                    runtime_errors.append("no one-step preds <= last_actual")
+                    continue
+                predicted_series = [{"date": d.date().isoformat(), "value": float(v)} for d, v in zip(one_step.loc[mask_pred, "date"], one_step.loc[mask_pred, "pred"])]
+
+                # compute eval
+                runtime_eval = _compute_eval_from_series(actual_series, predicted_series, min_samples=5)
+                if runtime_eval is None:
+                    runtime_errors.append("not enough overlap for eval (min_samples=5)")
+                    continue
+
+                # success
+                runtime_result = {
+                    "entity": entity,
+                    "last_actual": last_actual_dt.date().isoformat(),
+                    "runtime_eval": runtime_eval
+                }
+                break
+
+            except Exception as e:
+                runtime_errors.append(f"unexpected error for candidate '{candidate}': {e}")
+                continue
+
+        # assemble response: if Excel available, include it; always include runtime attempt result/errors
+        resp = {"ok": True, "query": q, "mode": "real", "runtime": runtime_result, "runtime_errors": runtime_errors}
+        if found:
+            resp["excel"] = {"slug": found[0], "metrics": found[1]}
+        else:
+            resp["excel"] = None
+
+        return jsonify(resp)
+
+    # --- else mode == "test": return Excel-only (existing behavior) ---
+    # same matching logic as your original function
+    if not excel_data:
         return jsonify({"error": "file evaluasi tidak ditemukan atau kosong"}), 404
 
-    # 1) try several slug candidates (plain, kab_, kota_, kota_administrasi_, dotted)
     for key in _candidates_for_eval_slug(q):
-        rec = data.get(key)
+        rec = excel_data.get(key)
         if rec:
             return jsonify({"ok": True, "city": rec["label"], "slug": key, "metrics": rec})
 
-    # 2) fallback: exact label match (case-insensitive, ignoring dots/hyphens)
     q_norm = re.sub(r"[.\-]", " ", q.lower()).strip()
-    for slug, val in data.items():
+    for slug, val in excel_data.items():
         if re.sub(r"[.\-]", " ", val["label"].lower()).strip() == q_norm:
             return jsonify({"ok": True, "city": val["label"], "slug": slug, "metrics": val})
 
-    # 3) soft fallback: contains match (useful when label is 'Kab. Banyuwangi')
-    for slug, val in data.items():
+    for slug, val in excel_data.items():
         if q_norm in val["label"].lower():
             return jsonify({"ok": True, "city": val["label"], "slug": slug, "metrics": val})
 
     return jsonify({"error": f"Evaluasi untuk kota '{q}' tidak ditemukan di Excel"}), 404
+
+
+def _compute_eval_from_series(actual_series, predicted_series, min_samples=5):
+    """
+    actual_series / predicted_series: list of {"date":"YYYY-MM-DD","value":float,...}
+    Return: dict of metrics or None
+    """
+    if not actual_series or not predicted_series:
+        return None
+
+    # build dict by date
+    act_map = {a["date"]: a["value"] for a in actual_series}
+    pred_map = {p["date"]: p["value"] for p in predicted_series}
+
+    # intersect dates
+    common_dates = sorted(set(act_map.keys()) & set(pred_map.keys()))
+    if len(common_dates) < min_samples:
+        return None
+
+    y_true = np.array([act_map[d] for d in common_dates], dtype=float)
+    y_pred = np.array([pred_map[d] for d in common_dates], dtype=float)
+
+    # safe computations
+    try:
+        mae = float(mean_absolute_error(y_true, y_pred))
+        mse = float(mean_squared_error(y_true, y_pred))
+        rmse = float(math.sqrt(mse))
+        # MAPE: guard divide-by-zero; skip elements where true == 0
+        nonzero_mask = (y_true != 0)
+        if nonzero_mask.sum() > 0:
+            mape = float(np.mean(np.abs((y_true[nonzero_mask] - y_pred[nonzero_mask]) / y_true[nonzero_mask])))
+        else:
+            mape = None
+        # R2
+        try:
+            r2 = float(r2_score(y_true, y_pred))
+        except Exception:
+            r2 = None
+
+        # return normalized metrics (MAPE in 0..1 if available)
+        return {"mae": mae, "mse": mse, "rmse": rmse, "mape": mape, "r2": r2, "n": len(common_dates)}
+    except Exception as e:
+        print("DEBUG compute_eval error:", e)
+        return None
+
+# helper: compute runtime eval for given eval-slug (best-effort)
+def _try_compute_runtime_eval_for_entity(eval_slug):
+    """
+    eval_slug: key in Excel eval dict (e.g. 'kab_banyumas' etc).
+    Returns dict like {"mae":..., "mse":..., "rmse":..., "mape":..., "r2":..., "n":...}
+    or {"error": "..."} on failure, or None if not enough overlap.
+    """
+    try:
+        # map eval slug to entity used in LONG_DF; try to re-use your candidate mapping
+        # if you have function to do reverse mapping, use it; otherwise try simple heuristics:
+        entity = _slug_to_entity(eval_slug) if callable(_slug_to_entity) else eval_slug
+
+        # get actuals until last_actual
+        dfe = LONG_DF.loc[LONG_DF["entity"] == entity, ["date", "value"]].copy()
+        if dfe.empty:
+            return {"error": "data actual tidak ditemukan in LONG_DF for entity"}
+
+        dfe["date"] = dfe["date"].dt.normalize()
+        last_actual_dt = LAST_ACTUAL.get(entity, dfe["date"].max().normalize())
+
+        # build actual_series up to cutoff
+        mask = dfe["date"] <= last_actual_dt
+        actual_series = [{"date": d.date().isoformat(), "value": float(v)} for d, v in zip(dfe.loc[mask, "date"], dfe.loc[mask, "value"])]
+
+        # load one-step predictions (best-effort). Use mode="real" to match runtime behavior.
+        try:
+            one_step = _one_step_predict_series(entity, mode="real")  # expects DataFrame with date,pred
+        except FileNotFoundError:
+            return {"error": "one-step model file tidak ditemukan"}
+        except Exception as e:
+            return {"error": f"gagal load one-step: {e}"}
+
+        # filter preds up to cutoff
+        mask_pred = one_step["date"] <= last_actual_dt
+        if mask_pred.sum() == 0:
+            return {"error": "tidak ada prediksi historis (one-step) sampai cutoff"}
+
+        predicted_series = [{"date": d.date().isoformat(), "value": float(v)} for d, v in zip(one_step.loc[mask_pred, "date"], one_step.loc[mask_pred, "pred"])]
+
+        # compute eval using same util as predict_range (assumes _compute_eval_from_series exists)
+        runtime_eval = _compute_eval_from_series(actual_series, predicted_series, min_samples=5)
+        if runtime_eval is None:
+            return {"error": "tidak cukup overlap untuk menghitung runtime eval (min_samples=5)"}
+        return runtime_eval
+
+    except Exception as e:
+        return {"error": f"unexpected error: {e}"}
 
 
 @app.route("/api/provinces")
@@ -3084,7 +3377,41 @@ def api_region_summary():
             "precomputed": pre is not None
         }), 500
 
-    
+def _test_bounds_for_entity(entity):
+    """
+    Return dict with last_train, test_end, last_actual
+    Adjust last_train if you store it per-model; here contoh fixed.
+    """
+    last_train = pd.Timestamp("2024-07-31").normalize()   # ganti kalau ada per-entity metadata
+    test_end   = last_train + pd.DateOffset(years=1)      # -> 2025-07-31
+    # last_actual = LAST_ACTUAL.get(entity, dfe["date"].max().normalize())  # caller must pass dfe if needed
+    return dict(last_train=last_train, test_end=test_end)
+
+def _predict_meta_for_date(entity, pred_dt, last_actual_dt):
+    """
+    pred_dt: pandas.Timestamp normalized
+    last_train/test_end computed elsewhere
+    """
+    bounds = _test_bounds_for_entity(entity)
+    test_end = bounds["test_end"]
+    within_test = pred_dt <= test_end
+    days_beyond_test = max(0, (pred_dt - test_end).days)
+    # is extrapolation relative to last_actual
+    beyond_actual = pred_dt > last_actual_dt
+    days_beyond_actual = max(0, (pred_dt - last_actual_dt).days)
+    # crude confidence rule (tweak to taste)
+    if not within_test:
+        conf = "low" if days_beyond_test > 30 else "medium"
+    else:
+        conf = "high"
+    return {
+        "within_test": bool(within_test),
+        "days_beyond_test": int(days_beyond_test),
+        "beyond_actual": bool(beyond_actual),
+        "days_beyond_actual": int(days_beyond_actual),
+        "confidence": conf,
+        "test_end": test_end.date().isoformat()
+    }
 
 
 @app.route("/api/quick_predict")
@@ -3094,16 +3421,7 @@ def api_quick_predict():
     Query:
       - city (slug/entity) required
       - mode (test|real) optional, default 'test'
-    Returns:
-      {
-        ok: True,
-        city, entity,
-        last_actual: 'YYYY-MM-DD',
-        last_value: float,
-        predictions: { "1":{date,val}, "7":..., "10":... },
-        history: [{date, value}, ...],   # ~30 days historical (for small trend)
-        naive: true/false (if fallback used)
-      }
+    Returns keys: ok, city, entity, last_actual, last_value, predictions, history, naive
     """
     slug = (request.args.get("city") or "").strip().lower()
     mode = (request.args.get("mode") or "real").strip().lower()
@@ -3121,7 +3439,7 @@ def api_quick_predict():
         return jsonify({"error": f"data '{entity}' kosong"}), 404
     dfe["date"] = pd.to_datetime(dfe["date"]).dt.normalize()
 
-    # last actual cutoff and last value
+    # last actual cutoff and last value - use the same source as predict_range
     last_actual_dt = LAST_ACTUAL.get(entity, dfe["date"].max().normalize())
     last_row = dfe.loc[dfe["date"] == last_actual_dt]
     if not last_row.empty:
@@ -3134,19 +3452,24 @@ def api_quick_predict():
     hist_df = dfe.sort_values("date").tail(30)
     history = [{"date": d.date().isoformat(), "value": float(v)} for d, v in zip(hist_df["date"], hist_df["value"])]
 
-    # try to predict next 10 days using existing model (recursive)
-    horizons = [1, 7, 10]
+    # try to predict next N days using the SAME recursive pipeline as predict_range
+    horizons = [1, 2,7, 10]
     predictions = {str(h): None for h in horizons}
     naive = False
 
+    max_h = max(horizons)
     try:
-        preds = _recursive_predict(entity, days=max(horizons), mode=mode)  # [{'date','pred'},...]
+        # IMPORTANT: _recursive_predict simulates from last_actual_dt forward using observed data up to last_actual
+        preds = _recursive_predict(entity, days=max_h, mode=mode)  # [{'date','pred'},...]
         # map to requested horizons (preds list indexing: 0 -> H+1)
         for h in horizons:
             idx = h - 1
             if idx < len(preds):
                 p = preds[idx]
-                predictions[str(h)] = {"date": p["date"], "value": float(p["pred"])}
+                # include meta per-prediction so UI can show within_test/confidence
+                p_dt = pd.to_datetime(p["date"]).normalize()
+                p_meta = _predict_meta_for_date(entity, p_dt, last_actual_dt)  # see helper below
+                predictions[str(h)] = {"date": p["date"], "value": float(p["pred"]), "meta": p_meta}
             else:
                 predictions[str(h)] = None
     except FileNotFoundError:
@@ -3154,9 +3477,10 @@ def api_quick_predict():
         naive = True
         for h in horizons:
             d = (last_actual_dt + pd.Timedelta(days=h)).date().isoformat()
-            predictions[str(h)] = {"date": d, "value": float(last_val)}
+            # meta for fallback (all beyond actual)
+            p_meta = _predict_meta_for_date(entity, pd.to_datetime(d).normalize(), last_actual_dt)
+            predictions[str(h)] = {"date": d, "value": float(last_val), "meta": p_meta}
     except Exception as e:
-        # unexpected error: return 500 with debug msg
         tb = traceback.format_exc()
         return jsonify({"error": f"prediction failed: {e}", "trace": tb}), 500
 
@@ -3236,7 +3560,7 @@ def upload_build_feature_row_for_date(feature_cols, history_series: pd.Series, t
             row[col] = flags.get(col, 0)
     return row
 
-def upload_iterative_forecast_from_pack(pack: dict, series: pd.Series, horizons=[1,7,10]):
+def upload_iterative_forecast_from_pack(pack: dict, series: pd.Series, horizons=[1,2,7,10]):
     model = pack['model']
     feature_cols = pack['feature_cols']
     last_date = series.index.max()

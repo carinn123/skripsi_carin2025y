@@ -1862,6 +1862,7 @@ async function fetchPredictRange(citySlug, startISO, endISO, mode = 'test') {
   loadCities();
 })();
 
+
 async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
   if (!entitySlug) return;
   const loading = document.getElementById('quickPredLoading');
@@ -1870,6 +1871,8 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
   const elTodayVal = document.getElementById('quickTodayValue');
   const elTodayDate = document.getElementById('quickTodayDate');
   const elTomorrowVal = document.getElementById('quickTomorrow');
+  const elLusaVal = document.getElementById('quicklusa');
+  const elLusaDate = document.getElementById('quicklusaDate');
   const elTomorrowDate = document.getElementById('quickTomorrowDate');
   const el7Val = document.getElementById('quick7Days');
   const el7Date = document.getElementById('quick7DaysDate');
@@ -1889,7 +1892,6 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
 
   // UI prepare
   if (loading) loading.style.display = '';
-  
   if (resultBox) resultBox.style.display = 'none';
 
   try {
@@ -1902,29 +1904,54 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
     const j = await res.json();
     if (!j.ok) throw new Error(j.error || 'no ok');
 
-    // fill main today
-    if (elTodayVal) elTodayVal.textContent = fmtMoney(j.last_value);
-    if (elTodayDate) elTodayDate.textContent = niceDate(j.last_actual);
+    // fill main today (last actual)
+    // === bagian fill main today (diperbaiki) ===
+if (j.last_actual || j.last_value != null) {
+  const actualDate = j.last_actual ? shortDate(j.last_actual) : '—';
+  // tulis teks lengkap langsung ke quickTodayDate
+  elTodayDate.textContent = `Harga aktual terakhir ${actualDate} : `;
+  // lalu isi nilai ke span quickTodayValue
+  elTodayVal.textContent = fmtMoney(j.last_value);
+  // jika span belum berada di dalam elTodayDate, masukkan; kalau sudah, skip
+  if (!elTodayDate.contains(elTodayVal)) elTodayDate.appendChild(elTodayVal);
+} else {
+  elTodayDate.textContent = 'Harga aktual terakhir — : ';
+  elTodayVal.textContent = '-';
+  if (!elTodayDate.contains(elTodayVal)) elTodayDate.appendChild(elTodayVal);
+}
+
 
     // fill horizons
     if (j.predictions && j.predictions["1"]) {
       elTomorrowVal.textContent = fmtMoney(j.predictions["1"].value);
       elTomorrowDate.textContent = shortDate(j.predictions["1"].date);
     } else {
-      elTomorrowVal.textContent = '-';
-      elTomorrowDate.textContent = '';
+      if (elTomorrowVal) elTomorrowVal.textContent = '-';
+      if (elTomorrowDate) elTomorrowDate.textContent = '';
     }
+
+    if (j.predictions && j.predictions["2"]) {
+      if (elLusaVal) elLusaVal.textContent = fmtMoney(j.predictions["2"].value);
+      if (elLusaDate) elLusaDate.textContent = shortDate(j.predictions["2"].date);
+    } else {
+      if (elLusaVal) elLusaVal.textContent = '-';
+      if (elLusaDate) elLusaDate.textContent = '';
+    }
+
     if (j.predictions && j.predictions["7"]) {
-      el7Val.textContent = fmtMoney(j.predictions["7"].value);
-      el7Date.textContent = shortDate(j.predictions["7"].date);
+      if (el7Val) el7Val.textContent = fmtMoney(j.predictions["7"].value);
+      if (el7Date) el7Date.textContent = shortDate(j.predictions["7"].date);
     } else {
-      el7Val.textContent = '-'; el7Date.textContent = '';
+      if (el7Val) el7Val.textContent = '-';
+      if (el7Date) el7Date.textContent = '';
     }
+
     if (j.predictions && j.predictions["10"]) {
-      el30Val.textContent = fmtMoney(j.predictions["10"].value);
-      el30Date.textContent = shortDate(j.predictions["10"].date);
+      if (el30Val) el30Val.textContent = fmtMoney(j.predictions["10"].value);
+      if (el30Date) el30Date.textContent = shortDate(j.predictions["10"].date);
     } else {
-      el30Val.textContent = '-'; el30Date.textContent = '';
+      if (el30Val) el30Val.textContent = '-';
+      if (el30Date) el30Date.textContent = '';
     }
 
     // render small chart: history + predicted points
@@ -1940,23 +1967,22 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
         }
       }
 
-      // append predicted up to 10 days (preserve label order)
+      // append predicted points in chronological order (1,2,7,10)
       const predsArr = [];
-      for (const k of ['1','7','10']) {
+      for (const k of ['1','2','7','10']) {
         if (j.predictions && j.predictions[k]) predsArr.push(j.predictions[k]);
       }
-      // to show fuller curve, try to request longer preds if desired — for now add predsArr in chronological order
       predsArr.sort((a,b)=> (new Date(a.date)) - (new Date(b.date)) );
       for (const p of predsArr) {
         labels.push(p.date);
         dataVals.push(Number(p.value));
       }
 
-      try {   
+      try {
         if (window.quickChartRef && window.quickChartRef.destroy) {
-      window.quickChartRef.destroy();
-      window.quickChartRef = null;
-       }
+          window.quickChartRef.destroy();
+          window.quickChartRef = null;
+        }
         if (typeof Chart !== 'undefined') {
           window.quickChartRef = new Chart(chartCanvas.getContext('2d'), {
             type: 'line',
@@ -1968,18 +1994,12 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
               scales: {
                 x: {
                   display: true,
-                  title: {
-                    display: true,
-                    text: 'Tanggal',
-                    color: '#111',
-                    font: { size: 12, weight: '600' }
-                  },
+                  title: { display: true, text: 'Tanggal', color: '#111', font: { size: 12, weight: '600' } },
                   ticks: {
                     autoSkip: true,
                     maxRotation: 0,
                     color: '#444',
                     callback(value, index, ticks) {
-                      // menjaga format tanggal jika labelnya string ISO 'YYYY-MM-DD'
                       const raw = this?.chart?.data?.labels?.[value] ?? (ticks?.[index]?.label ?? value);
                       if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
                         const [y,m,d] = raw.split('-');
@@ -1993,15 +2013,9 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
                 },
                 y: {
                   display: true,
-                  title: {
-                    display: true,
-                    text: 'Harga (Rp)',
-                    color: '#111',
-                    font: { size: 12, weight: '600' }
-                  },
+                  title: { display: true, text: 'Harga (Rp)', color: '#111', font: { size: 12, weight: '600' } },
                   ticks: {
                     color: '#444',
-                    // format ke rupiah (menggunakan Intl.NumberFormat agar konsisten)
                     callback: v => 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(v))
                   },
                   grid: { color: '#eee' }
@@ -2010,7 +2024,6 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
             }
           });
         }
-      
       } catch (err) { console.warn("quick chart error", err); }
     }
 
@@ -2024,12 +2037,13 @@ async function quickPredictFetchAndRender(entitySlug, opts = { mode: 'real' }) {
     if (loading) loading.style.display = 'none';
     if (resultBox) {
       resultBox.style.removeProperty('display');
-      document.getElementById('quickTodayValue').textContent = 'Gagal memuat';
-      document.getElementById('quickTodayDate').textContent = '';
+      if (document.getElementById('quickTodayValue')) document.getElementById('quickTodayValue').textContent = 'Gagal memuat';
+      if (document.getElementById('quickTodayDate')) document.getElementById('quickTodayDate').textContent = '';
     }
     return null;
   }
 }
+
 async function populateQuickSelect() {
   const sel = document.getElementById('quick_kabupaten');
   if (!sel) {
@@ -2127,7 +2141,22 @@ async function loadPrediksi(){
     }
 
     document.querySelector('.nav-link[data-section="prediksi"]')?.click();
-    await fetchAndRenderEvalForCity(citySlug);
+
+// Prefer runtime eval returned inside /api/predict_range (mode=real)
+    try {
+      if ((mode || '').toString().toLowerCase() === 'real' && r && r.eval && r.eval.runtime) {
+        // r.eval.runtime is expected: { mae, mse, rmse, mape, r2, n }
+        updateEvalCards(r.eval.runtime);
+        const labelEl = document.getElementById('evalCityLabel');
+        if (labelEl) labelEl.textContent = (r.entity || r.city || citySlug).replace(/_/g,' ');
+      } else {
+        // fallback: call eval_summary endpoint (will use mode param)
+        await fetchAndRenderEvalForCity(citySlug, mode);
+      }
+    } catch (err) {
+      console.warn("render runtime eval failed, falling back to /api/eval_summary:", err);
+      await fetchAndRenderEvalForCity(citySlug, mode);
+    }
 
   } catch (e) {
   console.error(e);
@@ -2522,15 +2551,19 @@ function updateEvalCards(metrics) {
   // set('performanceGrade', grade);
 }
 
-async function fetchAndRenderEvalForCity(cityInput) {
+async function fetchAndRenderEvalForCity(cityInput, mode = 'test') {
   if (!cityInput) {
     updateEvalCards(null);
     return null;
   }
 
   try {
-    console.debug("fetch eval single call for:", cityInput);
-    const url = `/api/eval_summary?city=${encodeURIComponent(cityInput)}`;
+    console.debug("fetch eval single call for:", cityInput, "mode:", mode);
+    let url = `/api/eval_summary?city=${encodeURIComponent(cityInput)}`;
+    if (mode && mode.toString().toLowerCase() === 'real') {
+      url += '&mode=real';
+    }
+
     const resp = await fetch(url, { cache: 'no-store' });
 
     if (resp.status === 404) {
@@ -2546,26 +2579,66 @@ async function fetchAndRenderEvalForCity(cityInput) {
     }
 
     const j = await resp.json();
+
+    // Prioritize runtime evaluation if server returned it (various server shapes handled)
+    // Possible server shapes:
+    // 1) { ok: true, runtime: { entity..., runtime_eval: {...} }, excel: {...} }
+    // 2) { ok: true, runtime: { runtime_eval: {...} }, ... }
+    // 3) { ok: true, city: ..., slug: ..., metrics: {...} } (old Excel-only)
+    // 4) { metrics: {...} } (other shape)
+    let runtimeEval = null;
+    if (j && j.mode === 'real' && j.runtime && j.runtime.runtime_eval) {
+      runtimeEval = j.runtime.runtime_eval;
+    } else if (j && j.runtime && j.runtime.runtime_eval) {
+      runtimeEval = j.runtime.runtime_eval;
+    } else if (j && j.runtime && j.runtime.runtime_eval === undefined && j.runtime.runtime_eval === null && j.runtime && j.runtime.runtime_eval) {
+      // no-op: keep it defensive
+    } else if (j && j.runtime && j.runtime.runtime_eval === undefined && j.runtime.runtime_eval === undefined && j.runtime) {
+      // handle older variant where runtime is the eval object directly
+      if (j.runtime && j.runtime.runtime_eval == null && j.runtime.runtime_eval !== undefined) {
+        // nothing
+      }
+    }
+
+    // Another possible server shape: { runtime: { entity, last_actual, runtime_eval } }
+    if (!runtimeEval && j && j.runtime && j.runtime.runtime_eval) runtimeEval = j.runtime.runtime_eval;
+    // Or server might return runtime directly as runtime object
+    if (!runtimeEval && j && j.runtime && j.runtime.mae) runtimeEval = j.runtime;
+
+    // If runtimeEval present, render it; else fallback to Excel metrics (j.metrics or j)
+    if (runtimeEval) {
+      updateEvalCards(runtimeEval);
+      const labelEl = document.getElementById('evalCityLabel');
+      if (labelEl && (j.city || (j.runtime && j.runtime.entity))) {
+        labelEl.textContent = j.city || j.runtime.entity;
+      }
+      return j;
+    }
+
+    // fallback to Excel metrics (old behavior)
     if (j && j.ok && j.metrics) {
       updateEvalCards(j.metrics);
       const labelEl = document.getElementById('evalCityLabel');
       if (labelEl && j.city) labelEl.textContent = j.city;
       return j;
-    } else {
-      // server might respond with metrics directly
-      if (j && j.metrics) {
-        updateEvalCards(j.metrics);
-        return j;
-      }
-      updateEvalCards(null);
-      return null;
+    } else if (j && j.metrics) {
+      updateEvalCards(j.metrics);
+      return j;
+    } else if (j && j.excel && j.excel.metrics) {
+      updateEvalCards(j.excel.metrics);
+      return j;
     }
+
+    updateEvalCards(null);
+    return null;
+
   } catch (err) {
     console.warn("fetchAndRenderEvalForCity error:", err);
     updateEvalCards(null);
     return null;
   }
 }
+
 
 function escapeHTML(str) {
   return String(str)
