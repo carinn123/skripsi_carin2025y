@@ -1495,7 +1495,7 @@ function getTestCutoff() {
     const el = document.getElementById('prediksi');
     if (el && el.dataset && el.dataset.testCutoff) return el.dataset.testCutoff;
   } catch(e){}
-  return '2025-07-01'; // fallback
+  return '2025-11-01'; // fallback
 }
 
 function showTestCutoffModal(cutoffIso) {
@@ -1956,76 +1956,93 @@ if (j.last_actual || j.last_value != null) {
 
     // render small chart: history + predicted points
     if (chartCanvas && (Array.isArray(j.history) || j.predictions)) {
-      const labels = [];
-      const dataVals = [];
+  const labels = [];
+  const dataVals = [];
 
-      // history
-      if (Array.isArray(j.history)) {
-        for (const p of j.history) {
-          labels.push(p.date);
-          dataVals.push(Number(p.value));
-        }
-      }
-
-      // append predicted points in chronological order (1,2,7,10)
-      const predsArr = [];
-      for (const k of ['1','2','7','10']) {
-        if (j.predictions && j.predictions[k]) predsArr.push(j.predictions[k]);
-      }
-      predsArr.sort((a,b)=> (new Date(a.date)) - (new Date(b.date)) );
-      for (const p of predsArr) {
-        labels.push(p.date);
-        dataVals.push(Number(p.value));
-      }
-
-      try {
-        if (window.quickChartRef && window.quickChartRef.destroy) {
-          window.quickChartRef.destroy();
-          window.quickChartRef = null;
-        }
-        if (typeof Chart !== 'undefined') {
-          window.quickChartRef = new Chart(chartCanvas.getContext('2d'), {
-            type: 'line',
-            data: { labels: labels, datasets: [{ label: 'Harga (Rp/L)', data: dataVals, tension: 0.2, fill:false }]},
-            options: {
-              plugins: { legend: { display: false } },
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                x: {
-                  display: true,
-                  title: { display: true, text: 'Tanggal', color: '#111', font: { size: 12, weight: '600' } },
-                  ticks: {
-                    autoSkip: true,
-                    maxRotation: 0,
-                    color: '#444',
-                    callback(value, index, ticks) {
-                      const raw = this?.chart?.data?.labels?.[value] ?? (ticks?.[index]?.label ?? value);
-                      if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-                        const [y,m,d] = raw.split('-');
-                        const mon = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][+m-1];
-                        return `${d} ${mon}`;
-                      }
-                      return String(raw ?? '');
-                    }
-                  },
-                  grid: { color: '#f7f7f7' }
-                },
-                y: {
-                  display: true,
-                  title: { display: true, text: 'Harga (Rp)', color: '#111', font: { size: 12, weight: '600' } },
-                  ticks: {
-                    color: '#444',
-                    callback: v => 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(v))
-                  },
-                  grid: { color: '#eee' }
-                }
-              }
-            }
-          });
-        }
-      } catch (err) { console.warn("quick chart error", err); }
+  // history
+  if (Array.isArray(j.history)) {
+    for (const p of j.history) {
+      labels.push(p.date);
+      dataVals.push(Number(p.value));
     }
+  }
+
+  // append predicted points in chronological order (1,2,7,10)
+  const predsArr = [];
+  for (const k of ['1','2','7','10']) {
+    if (j.predictions && j.predictions[k]) predsArr.push(j.predictions[k]);
+  }
+  predsArr.sort((a,b)=> (new Date(a.date)) - (new Date(b.date)) );
+  for (const p of predsArr) {
+    labels.push(p.date);
+    dataVals.push(Number(p.value));
+  }
+
+  try {
+    // ensure result box is visible BEFORE creating chart so canvas has layout
+    if (resultBox) resultBox.style.removeProperty('display');
+
+    // ensure canvas has a reasonable height if CSS didn't provide one
+    if (!chartCanvas.style.height || chartCanvas.style.height === '') {
+      chartCanvas.style.height = '200px'; // tweak height as needed
+    }
+
+    if (window.quickChartRef && window.quickChartRef.destroy) {
+      window.quickChartRef.destroy();
+      window.quickChartRef = null;
+    }
+
+    if (typeof Chart === 'undefined') {
+      console.warn('Chart.js belum ter-load — grafik tidak dapat dirender');
+    } else {
+      window.quickChartRef = new Chart(chartCanvas.getContext('2d'), {
+        type: 'line',
+        data: { labels: labels, datasets: [{ label: 'Harga (Rp/L)', data: dataVals, tension: 0.2, fill:false }]},
+        options: {
+          plugins: { legend: { display: false } },
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              display: true,
+              title: { display: true, text: 'Tanggal', color: '#111', font: { size: 12, weight: '600' } },
+              ticks: {
+                autoSkip: true,
+                maxRotation: 0,
+                color: '#444',
+                callback(value, index, ticks) {
+                  const raw = this?.chart?.data?.labels?.[index] ?? (ticks?.[index]?.label ?? value);
+                  if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+                    const [y,m,d] = raw.split('-');
+                    const mon = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][+m-1];
+                    return `${d} ${mon}`;
+                  }
+                  return String(raw ?? '');
+                }
+              },
+              grid: { color: '#f7f7f7' }
+            },
+            y: {
+              display: true,
+              title: { display: true, text: 'Harga (Rp)', color: '#111', font: { size: 12, weight: '600' } },
+              ticks: {
+                color: '#444',
+                callback: v => 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(v))
+              },
+              grid: { color: '#eee' }
+            }
+          }
+        }
+      });
+
+      // force resize/update after being visible
+      window.quickChartRef.resize();
+      window.quickChartRef.update();
+    }
+  } catch (err) {
+    console.warn("quick chart error", err);
+  }
+}
 
     // show result
     if (loading) loading.style.display = 'none';

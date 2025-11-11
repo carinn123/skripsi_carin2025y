@@ -54,8 +54,8 @@ DATA_PATH = Path(os.getenv("DATA_PATH", str(BASE_DIR / "data" / "dataset.xlsx"))
 
 # MODELS dirs: bisa dioverride lewat env
 MODELS_DIR = Path(os.getenv("MODELS_DIR", str(BASE_DIR / "packs")))
-MODELS_DIR_PACKS = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "120 test")))
-MODELS_30 = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "120 test")))
+MODELS_DIR_PACKS = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "30 test")))
+MODELS_30 = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "30 test")))
 
 ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
 CITY_COORDS_PATH = BASE_DIR / "static" / "city_coords.json"
@@ -267,7 +267,7 @@ def _compute_last_actual_dates(path_xlsx: str) -> dict:
     raw = raw.dropna(subset=[date_col]).sort_values(date_col)
     value_cols = raw.columns[1:]
 
-    cutoff = pd.Timestamp("2025-10-30")  # batas akhir data nyata
+    cutoff = pd.Timestamp("2025-11-10")  # batas akhir data nyata
     last = {}
     for c in value_cols:
         ent = re.sub(r"\s+", "_", str(c).strip().lower())
@@ -783,7 +783,7 @@ def _load_model_for_entity(entity: str, mode: str = "test"):
             try:
                 mtime = files0.stat().st_mtime
                 mdate = pd.to_datetime(time.strftime("%Y-%m-%d", time.localtime(mtime)))
-                train_until = mdate - pd.Timedelta(days=120)
+                train_until = mdate - pd.Timedelta(days=60)
                 print(f">> [REAL] train_until inferred from file mtime: {train_until.date()}")
             except Exception:
                 train_until = None
