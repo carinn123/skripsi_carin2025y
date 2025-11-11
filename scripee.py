@@ -27,8 +27,8 @@ from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
 # ========== CONFIG ==========
 DATA_PATH = r"C:\Users\ASUS\skripsi_carin\data\dataset.xlsx"
-OUTDIR    = Path(r"C:\Users\ASUS\Documents\skripsi mancing\models_hgbr60_carin_only")
-TEST_DAYS = 60
+OUTDIR    = Path(r"C:\Users\ASUS\Documents\skripsi mancing\models_hgbr30_carin_only")
+TEST_DAYS = 30
 N_SPLITS_CV = 3
 SEED = 42
 
@@ -43,8 +43,22 @@ EARLY_STOP_KW = dict(early_stopping=True, validation_fraction=0.15, n_iter_no_ch
 
 # daftar kota (sesbuaikan kalau perlu)
 # CITY_NAMES = ["Kota Bandung","Kota Bekasi","Kota Bogor","Kota Depok","Kota Sukabumi", "Kab. Sragen","Kab. Banyumas","Kab Boyolali","Kab. Bulukomba","Kab. Bulungan", "Kab.Bungo","Kab. Cirebon","Kab. Jember"]
+
 CITY_NAMES = [
-   "Kota Pekanbaru","Kota Pematang Siantar","Kab. Polewali Mandar",
+    "Kota Maluku","Kota Balikpapan","Kota Banda Aceh","Kota Bandar Lampung","Kota Bandung",
+    "Kota Banggai","Kota Banjarmasin","Kab. Banyumas","Kab. Banyuwangi","Kota Batam",
+    "Kota Bau - Bau","Kota Bekasi","Kota Bengkulu","Kota Bima","Kota Blitar","Kota Bogor",
+    "Kota Bontang","Kab. Boyolali","Kab. Bulukomba","Kab. Bulungan","Kab. Bungo",
+    "Kab. Cilacap","Kota Cilegon","Kota Cirebon","Kab. Cirebon","Kota Denpasar","Kota Depok",
+    "Kota Dumai","Kota Gorontalo","Kab. Gorontalo","Kota Gunung Sitoli","Kota Jakarta Pusat",
+    "Kota Jambi","Kota Jayapura","Kab. Jayawijaya","Kab. Jember","Kab. Sintang",
+    "Kab. Karanganyar","Kota Kediri","Kota Kendari","Kab.Klaten","Kab Kotabaru","Kotamobagu",
+    "Kab. Kudus","Kota Kupang","Kota Lhokseumawe","Kab. Lombok Timur","Kota Lubuk Linggau",
+    "Kota Madiun","Kab. Majene","Kota Makassar","Kota Malang","Kota Mamuju","Kota Manado",
+    "Kab. Manokwari","Kota Mataram","Kota Maumere","Kota Medan","Kab. Merauke","Kota Metro",
+    "Kota Meulaboh","Kab. Mimika","Kab. Nabire","Kota Padang","Kota Padang Sidempuan",
+    "Kota Palangkaraya","Kota Palembang","Kota Palopo","Kota Palu","Kota Pangkalpinang",
+    "Kota Pare -Pare","Kota Pekanbaru","Kota Pematang Siantar","Kab. Polewali Mandar",
     "Kota Pontianak","Kota Probolinggo","Kota Samarinda","Kota Sampit","Kota Semarang",
     "Kota Serang","Kota Sibolga","Kota Singkawang","Kota Sorong","Kab Sragen","Kota Sukabumi",
     "Kab. Sukoharjo","Kab. Sumba Timur","Kab. Sumbawa","Kab. Sumenep","Kota Surabaya",
@@ -52,6 +66,7 @@ CITY_NAMES = [
     "Kota Tanjung Pinang","Kota Tarakan","Kota Tasikmalaya","Kota Sumenep",
     "Kota Tembilahan","Kota Ternate","Kota Tual","Kota Watampone","Kab. Wonogiri","Kota Yogyakarta"
 ][:105]
+
 
 # 12 eksperimen fitur
 FEATURE_EXPERIMENTS = [
