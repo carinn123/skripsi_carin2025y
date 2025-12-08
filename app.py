@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import math
 import time
 import os
+from datetime import date
 
 GOOGLE_API_KEY = os.getenv("AIzaSyCA1O5IxSkSg_uHpB5ITbk14CUqhnA_YBk")
 
@@ -267,7 +268,7 @@ def _compute_last_actual_dates(path_xlsx: str) -> dict:
     raw = raw.dropna(subset=[date_col]).sort_values(date_col)
     value_cols = raw.columns[1:]
 
-    cutoff = pd.Timestamp("2025-11-10")  # batas akhir data nyata
+    cutoff = pd.Timestamp("2025-12-01")  # batas akhir data nyata
     last = {}
     for c in value_cols:
         ent = re.sub(r"\s+", "_", str(c).strip().lower())
@@ -2372,15 +2373,25 @@ def api_predict_range():
             except Exception:
                 r2 = None
         return {"mae": mae, "mse": mse, "rmse": rmse, "mape": mape, "r2": r2, "n": len(common)}
+    def _zero_metrics():
+        return {
+            "mae": 0.0,
+            "mse": 0.0,
+            "rmse": 0.0,
+            "mape": 0.0,
+            "r2": 0.0,
+            "n": 0
+        }
 
     runtime_eval = None
-    if mode == "real":
-        runtime_eval = _compute_eval_from_series_local(act_for_eval, pred_for_eval, min_samples=1)
-        print(f"DEBUG runtime_eval (mode=real): {runtime_eval}")
+    
+    if mode in ("real", "test"):
+        runtime_eval = _compute_eval_from_series_local(
+            act_for_eval, pred_for_eval, min_samples=1
+        )
+        print(f"DEBUG runtime_eval (mode={mode}): {runtime_eval}")
 
-
-    viz_roll = int((request.args.get("viz_roll") or "0").strip() or 0)  # default 0 (tanpa smoothing)
-
+    viz_roll = int((request.args.get("viz_roll") or "0").strip() or 0)
     if viz_roll > 1:
         actual_series    = _apply_rolling(actual_series, window=viz_roll)
         predicted_series = _apply_rolling(predicted_series, window=viz_roll)
@@ -2388,53 +2399,93 @@ def api_predict_range():
     print(f"DEBUG result actual={len(actual_series)} predicted={len(predicted_series)}")
     summary_pred = _series_stats(predicted_series)
     summary_act  = _series_stats(actual_series)
-    
-        # === Tambahan: ambil evaluasi dari Excel dan gabungkan ke respons ===
+
+# === Tambahan: ambil evaluasi dari Excel dan gabungkan ke respons ===
     eval_metrics = None
-    try:
-        eval_metrics = _load_eval_metrics(entity)
-        # Normalisasi angka supaya konsisten
-        if eval_metrics:
-            metrics = dict(eval_metrics)  # salin biar gak ubah cache
-            # pastikan numeric
-            for k in ["mae", "rmse", "mse", "mape", "r2"]:
-                if k in metrics and metrics[k] is not None:
-                    try:
-                        metrics[k] = float(metrics[k])
-                    except:
-                        metrics[k] = None
+    if start_dt > last_actual_dt:
+        # full future → semua metric = 0
+        eval_metrics = _zero_metrics()
+        if runtime_eval is None:
+            runtime_eval = _zero_metrics()
+    else:
+        # BUKAN full future → cek apakah range ini adalah test window spesial
+        TEST_START_MIN = date(2024, 7, 1)
+        TEST_START_MAX = date(2024, 7, 7)
+        TEST_END_MIN   = date(2025, 7, 1)
+        TEST_END_MAX   = date(2025, 7, 7)
 
-            # MAPE kadang ditulis dalam %, ubah ke 0..1
-            if metrics.get("mape") and metrics["mape"] > 1.5:
-                metrics["mape"] = metrics["mape"] / 100.0
+        cur_start = start_dt.date()
+        cur_end   = end_dt.date()
 
-            # Hitung MSE/RMSE jika salah satu kosong
-            if metrics.get("mse") is None and metrics.get("rmse") is not None:
-                metrics["mse"] = float(metrics["rmse"]) ** 2
-            if metrics.get("rmse") is None and metrics.get("mse") is not None:
-                metrics["rmse"] = float(metrics["mse"]) ** 0.5
+        is_test_window = (
+            TEST_START_MIN <= cur_start <= TEST_START_MAX and
+            TEST_END_MIN   <= cur_end   <= TEST_END_MAX
+        )
 
-            eval_metrics = metrics
-    except Exception as e:
-        print("DEBUG eval attach error:", e)
-        eval_metrics = None
+        if is_test_window:
+            # HANYA untuk window ini ambil dari Excel
+            try:
+                eval_metrics = _load_eval_metrics(entity)
+                if eval_metrics:
+                    metrics = dict(eval_metrics)  # salin biar gak ubah cache
+
+                    for k in ["mae", "rmse", "mse", "mape", "r2"]:
+                        if k in metrics and metrics[k] is not None:
+                            try:
+                                metrics[k] = float(metrics[k])
+                            except Exception:
+                                metrics[k] = None
+
+                    # MAPE kadang dalam %, ubah ke 0..1
+                    if metrics.get("mape") and metrics["mape"] > 1.5:
+                        metrics["mape"] = metrics["mape"] / 100.0
+
+                    # Hitung MSE/RMSE jika salah satu kosong
+                    if metrics.get("mse") is None and metrics.get("rmse") is not None:
+                        metrics["mse"] = float(metrics["rmse"]) ** 2
+                    if metrics.get("rmse") is None and metrics.get("mse") is not None:
+                        metrics["rmse"] = float(metrics["mse"]) ** 0.5
+
+                    eval_metrics = metrics
+                    runtime_eval = dict(metrics)
+
+            except Exception as e:
+                print("DEBUG eval attach error:", e)
+                eval_metrics = None
+        else:
+            # Bukan future, tapi juga bukan test window spesial
+            # → pakai runtime_eval (manual), atau 0 kalau gak ada
+            if runtime_eval is not None:
+                eval_metrics = dict(runtime_eval)
+            else:
+                eval_metrics = _zero_metrics()
+
+    # fallback terakhir kalau masih None (jaga-jaga)
+    if eval_metrics is None:
+        eval_metrics = _zero_metrics()
+    if runtime_eval is None:
+        runtime_eval = _zero_metrics()
 
     return jsonify({
         "city": slug,
         "entity": entity,
-        "range": {"start": start_dt.date().isoformat(), "end": end_dt.date().isoformat()},
+        "range": {
+            "start": start_dt.date().isoformat(),
+            "end":   end_dt.date().isoformat()
+        },
         "last_actual": last_actual_dt.date().isoformat(),
         "actual": actual_series,
         "predicted": predicted_series,
         "summary": {
-        "actual": summary_act,
-        "predicted": summary_pred
-    },
-    "eval": {
-        "excel": eval_metrics,     # tetap ambil dari Excel seperti sekarang
-        "runtime": runtime_eval   # isi jika mode == "real"
-    }
-    })
+            "actual": summary_act,
+            "predicted": summary_pred
+        },
+        "eval": {
+            "excel": eval_metrics,   # now: future → 0, test-window → Excel, lainnya → runtime/0
+            "runtime": runtime_eval  # hasil hitung manual utk real+test
+        }
+})
+
 
 # === FEATURE BUILDER (identik dgn training: lag_1, lag_30 + kalender flags) ===
 def _build_features_training_like(dfe: pd.DataFrame, add_targets: bool = False) -> pd.DataFrame:

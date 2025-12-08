@@ -676,38 +676,86 @@ async function showMapBeranda(event){
     
     // === tampilkan rata-rata nasional per kota (rata_ratanasional) ===
 // === tampilkan rata-rata nasional per kota (rata_ratanasional) ===
-console.log('DEBUG: js.rata_ratanasional =>', js && js.rata_ratanasional);
-const rataValServer = js && (js.rata_ratanasional ?? js.rata_ratanasional_value ?? js.rata_rata_nasional);
-if (rataValServer != null) {
-  const el = document.getElementById('legend_national_mean');
-  const formatted = (typeof rupiah === 'function')
-    ? 'Rp ' + rupiah(Math.round(rataValServer))
-    : 'Rp ' + Math.round(rataValServer).toLocaleString('id-ID');
-  if (el) {
-    el.textContent = `Rata-rata Nasional (per-kota): ${formatted}`;
-  } else {
-    console.warn('legend_national_mean element not found');
-    // optionally create it dynamically:
-    const container = document.querySelector('.legend') || document.body;
-    const p = document.createElement('p');
-    p.id = 'legend_national_mean';
-    p.style.marginTop = '8px';
-    p.style.fontSize = '0.95rem';
-    p.style.color = '#214';
-    p.style.fontWeight = '600';
-    p.innerHTML = `Rata-rata Nasional (per-kota): ${formatted}<br><small style="font-weight:400;color:#666">(dihitung dari rata-rata kota sesuai filter)</small>`;
-    container.insertAdjacentElement('afterend', p);
-  }
-} else {
-  // no value returned: keep default text / clear previous
-  const el = document.getElementById('legend_national_mean');
-  if (el) el.textContent = 'Rata-rata Nasional (per-kota): - (tidak ada data untuk filter)';
-}
+  console.log('DEBUG: js.rata_ratanasional =>', js && js.rata_ratanasional);
+    const rataValServer = js && (js.rata_ratanasional ?? js.rata_ratanasional_value ?? js.rata_rata_nasional);
+    if (rataValServer != null) {
+      const el = document.getElementById('legend_national_mean');
+      const formatted = (typeof rupiah === 'function')
+        ? 'Rp ' + rupiah(Math.round(rataValServer))
+        : 'Rp ' + Math.round(rataValServer).toLocaleString('id-ID');
+      if (el) {
+        el.textContent = `Rata-rata Nasional (per-kota): ${formatted}`;
+      } else {
+        console.warn('legend_national_mean element not found');
+        const container = document.querySelector('.legend') || document.body;
+        const p = document.createElement('p');
+        p.id = 'legend_national_mean';
+        p.style.marginTop = '8px';
+        p.style.fontSize = '0.95rem';
+        p.style.color = '#214';
+        p.style.fontWeight = '600';
+        p.innerHTML = `Rata-rata Nasional (per-kota): ${formatted}<br><small style="font-weight:400;color:#666">(dihitung dari rata-rata kota sesuai filter)</small>`;
+        container.insertAdjacentElement('afterend', p);
+      }
+    } else {
+      const el = document.getElementById('legend_national_mean');
+      if (el) el.textContent = 'Rata-rata Nasional (per-kota): - (tidak ada data untuk filter)';
+    }
+
+    // === RANGE BUCKETS T1 / T2 / T3 ===
+    try {
+      const bucketEl = document.getElementById('t1-mean');
+      if (bucketEl && js && js.buckets) {
+        const scopeFromServer = js.bucket_scope || bucket_scope;  // pakai info dari server kalau ada
+
+        const fmtRupiah = (v) => {
+          if (v == null) return '-';
+          const n = Math.round(Number(v));
+          return (typeof rupiah === 'function')
+            ? 'Rp ' + rupiah(n)
+            : 'Rp ' + n.toLocaleString('id-ID');
+        };
+
+        let text = 'Range bucket: -';
+
+        if (scopeFromServer === 'national') {
+          const T1 = js.buckets?.T1;
+          const T2 = js.buckets?.T2;
+          if (T1 != null && T2 != null) {
+            text =
+              `T1: ≤ ${fmtRupiah(T1)}\n` +
+              `T2: > ${fmtRupiah(T1)} – ≤ ${fmtRupiah(T2)}\n` +
+              `T3: > ${fmtRupiah(T2)}`;
+          } else {
+            text = 'Range bucket: - (batas T1/T2 tidak tersedia)';
+          }
+        } else if (scopeFromServer === 'island') {
+          // cari bucket khusus pulau yang dipilih
+          const selectedIsl = (island || '').trim();
+          const key = selectedIsl && selectedIsl.toLowerCase() !== 'semua pulau'
+            ? selectedIsl.toUpperCase()
+            : null;
+          const bucket = key ? js.buckets[key] : null;
+          if (bucket && bucket.T1 != null && bucket.T2 != null) {
+            text =
+              `T1 : ≤ ${fmtRupiah(bucket.T1)}\n` +
+              `T2 : > ${fmtRupiah(bucket.T1)} – ≤ ${fmtRupiah(bucket.T2)}\n` +
+              `T3 : > ${fmtRupiah(bucket.T2)}`;
+          } else {
+            text = 'Range bucket: - (batas untuk pulau ini tidak tersedia)';
+          }
+        }
+
+        bucketEl.innerText = text; // pakai innerText supaya \n jadi baris baru
+      }
+    } catch (err) {
+      console.warn('Gagal update legend bucket T1/T2/T3', err);
+    }
 
 
     const m = ensureMap();
     const gj = await getProvGeoJSON();
-
+    
     // build vmap for choropleth painting
     const vmap = Object.fromEntries((js.data||[]).map(d=>[normProv(d.province), { val:d.value, cat:d.category, label:d.province, n_cities: d.n_cities || d.n_kota || 0 }]));
 
@@ -2102,7 +2150,7 @@ async function loadPrediksi(){
   const end   = document.getElementById('endDate').value;
   const ph = document.getElementById('predPlaceholder');
   const predModeEl = document.getElementById('predMode');
-  const mode = predModeEl ? (predModeEl.value || 'test') : 'test';
+  let mode = predModeEl ? (predModeEl.value || 'test') : 'test';   // <= pakai let
 
   if (!citySlug) { alert('Pilih Kabupaten/Kota.'); return; }
   if (!start || !end) { alert('Tanggal mulai & akhir wajib diisi.'); return; }
@@ -2161,13 +2209,14 @@ async function loadPrediksi(){
 
 // Prefer runtime eval returned inside /api/predict_range (mode=real)
     try {
-      if ((mode || '').toString().toLowerCase() === 'real' && r && r.eval && r.eval.runtime) {
-        // r.eval.runtime is expected: { mae, mse, rmse, mape, r2, n }
+      if (r && r.eval && r.eval.runtime) {
         updateEvalCards(r.eval.runtime);
         const labelEl = document.getElementById('evalCityLabel');
-        if (labelEl) labelEl.textContent = (r.entity || r.city || citySlug).replace(/_/g,' ');
+        if (labelEl) {
+          labelEl.textContent = (r.entity || r.city || citySlug).replace(/_/g,' ');
+        }
       } else {
-        // fallback: call eval_summary endpoint (will use mode param)
+        // fallback: /api/eval_summary
         await fetchAndRenderEvalForCity(citySlug, mode);
       }
     } catch (err) {
@@ -2176,10 +2225,10 @@ async function loadPrediksi(){
     }
 
   } catch (e) {
-  console.error(e);
-  ph.style.display = '';
-  ph.innerHTML = `❌ Gagal memuat prediksi: <small>${e.message}</small>`;
-}
+    console.error(e);
+    ph.style.display = '';
+    ph.innerHTML = `❌ Gagal memuat prediksi: <small>${e.message}</small>`;
+  }
 }
 window.loadPrediksi = loadPrediksi;
 
