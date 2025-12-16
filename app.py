@@ -55,7 +55,7 @@ DATA_PATH = Path(os.getenv("DATA_PATH", str(BASE_DIR / "data" / "dataset.xlsx"))
 
 # MODELS dirs: bisa dioverride lewat env
 MODELS_DIR = Path(os.getenv("MODELS_DIR", str(BASE_DIR / "packs")))
-MODELS_DIR_PACKS = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "30 test")))
+MODELS_DIR_PACKS = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "300_test")))
 MODELS_30 = Path(os.getenv("MODELS_DIR_PACKS", str(BASE_DIR / "30 test")))
 
 ENTITY_PROV_PATH = BASE_DIR / "static" / "entity_to_province.json"
@@ -268,7 +268,7 @@ def _compute_last_actual_dates(path_xlsx: str) -> dict:
     raw = raw.dropna(subset=[date_col]).sort_values(date_col)
     value_cols = raw.columns[1:]
 
-    cutoff = pd.Timestamp("2025-12-01")  # batas akhir data nyata
+    cutoff = pd.Timestamp("2025-12-14")  # batas akhir data nyata
     last = {}
     for c in value_cols:
         ent = re.sub(r"\s+", "_", str(c).strip().lower())

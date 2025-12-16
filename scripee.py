@@ -11,11 +11,6 @@ from datetime import timedelta
 
 # sklearn
 from sklearn.experimental import enable_hist_gradient_boosting  # noqa: F401
-
-
-
-
-
 from sklearn.ensemble import HistGradientBoostingRegressor as HGBR
 
 
@@ -27,7 +22,7 @@ from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
 # ========== CONFIG ==========
 DATA_PATH = r"C:\Users\ASUS\skripsi_carin\data\dataset.xlsx"
-OUTDIR    = Path(r"C:\Users\ASUS\Documents\skripsi mancing\models_hgbr30_carin_only")
+OUTDIR    = Path(r"C:\Users\ASUS\Documents\skripsi mancing\models_hgbr300_carin_only")
 TEST_DAYS = 30
 N_SPLITS_CV = 3
 SEED = 42
@@ -44,6 +39,11 @@ EARLY_STOP_KW = dict(early_stopping=True, validation_fraction=0.15, n_iter_no_ch
 # daftar kota (sesbuaikan kalau perlu)
 # CITY_NAMES = ["Kota Bandung","Kota Bekasi","Kota Bogor","Kota Depok","Kota Sukabumi", "Kab. Sragen","Kab. Banyumas","Kab Boyolali","Kab. Bulukomba","Kab. Bulungan", "Kab.Bungo","Kab. Cirebon","Kab. Jember"]
 
+
+# CITY_NAMES = [
+#    "Kota Banggai",
+   
+# ][:105]
 CITY_NAMES = [
     "Kota Maluku","Kota Balikpapan","Kota Banda Aceh","Kota Bandar Lampung","Kota Bandung",
     "Kota Banggai","Kota Banjarmasin","Kab. Banyumas","Kab. Banyuwangi","Kota Batam",
