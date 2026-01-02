@@ -9,8 +9,10 @@ xlrd
 geopandas
 rapidfuzz
 shapely
+gunicorn
 fiona
 pyproj
+
 rtree
 reportlab        # untuk PDF export
 matplotlib       # untuk grafik
