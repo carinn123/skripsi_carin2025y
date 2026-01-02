@@ -1,0 +1,587 @@
+{
+  "bucket_scope": "city",
+  "buckets": {
+    "T1": 20200.0,
+    "T2": 20989.980732177264
+  },
+  "data": [
+    {
+      "category": "T3",
+      "city": "kota_balikpapan",
+      "count": 346,
+      "lat": -1.2398711,
+      "lng": 116.8593379,
+      "value": 21202.890173410404
+    },
+    {
+      "category": "T3",
+      "city": "kota_banda_aceh",
+      "count": 346,
+      "lat": 5.5528455,
+      "lng": 95.3192908,
+      "value": 21700.0
+    },
+    {
+      "category": "T1",
+      "city": "kota_bandar_lampung",
+      "count": 346,
+      "lat": -5.4460713,
+      "lng": 105.2643742,
+      "value": 17894.690231213874
+    },
+    {
+      "category": "T2",
+      "city": "kota_bandung",
+      "count": 346,
+      "lat": -6.9218457,
+      "lng": 107.6070833,
+      "value": 20527.456647398845
+    },
+    {
+      "category": "T1",
+      "city": "kota_banggai",
+      "count": 346,
+      "lat": -0.9210461,
+      "lng": 122.6975066,
+      "value": 19281.50289017341
+    },
+    {
+      "category": "T2",
+      "city": "kota_banjarmasin",
+      "count": 346,
+      "lat": -3.3187496,
+      "lng": 114.5925828,
+      "value": 20531.647398843932
+    },
+    {
+      "category": "T1",
+      "city": "kota_batam",
+      "count": 346,
+      "lat": 1.1030815,
+      "lng": 104.0383696,
+      "value": 19253.323699421966
+    },
+    {
+      "category": "T3",
+      "city": "kota_bekasi",
+      "count": 346,
+      "lat": -6.2349858,
+      "lng": 106.9945444,
+      "value": 21018.352601156068
+    },
+    {
+      "category": "T1",
+      "city": "kota_bengkulu",
+      "count": 346,
+      "lat": -3.7922858,
+      "lng": 102.2623797,
+      "value": 19852.312138728324
+    },
+    {
+      "category": "T3",
+      "city": "kota_bima",
+      "count": 346,
+      "lat": -9.5466677,
+      "lng": 119.0047752,
+      "value": 21811.70520231214
+    },
+    {
+      "category": "T1",
+      "city": "kota_blitar",
+      "count": 346,
+      "lat": -8.1311983,
+      "lng": 112.3115572,
+      "value": 18760.260115606936
+    },
+    {
+      "category": "T3",
+      "city": "kota_bogor",
+      "count": 346,
+      "lat": -6.5962986,
+      "lng": 106.7972421,
+      "value": 21519.219653179192
+    },
+    {
+      "category": "T2",
+      "city": "kota_bontang",
+      "count": 346,
+      "lat": 0.1236548,
+      "lng": 117.471708,
+      "value": 20637.71676300578
+    },
+    {
+      "category": "T1",
+      "city": "kota_cilegon",
+      "count": 346,
+      "lat": -6.017389,
+      "lng": 106.0537688,
+      "value": 18847.254335260117
+    },
+    {
+      "category": "T2",
+      "city": "kota_cirebon",
+      "count": 346,
+      "lat": -6.7137044,
+      "lng": 108.5608483,
+      "value": 20511.84971098266
+    },
+    {
+      "category": "T3",
+      "city": "kota_denpasar",
+      "count": 346,
+      "lat": -8.6524973,
+      "lng": 115.2191175,
+      "value": 21969.36416184971
+    },
+    {
+      "category": "T2",
+      "city": "kota_depok",
+      "count": 346,
+      "lat": -6.40719,
+      "lng": 106.8158371,
+      "value": 20654.913294797687
+    },
+    {
+      "category": "T1",
+      "city": "kota_dumai",
+      "count": 346,
+      "lat": 1.667111,
+      "lng": 101.4333,
+      "value": 19374.13294797688
+    },
+    {
+      "category": "T3",
+      "city": "kota_gorontalo",
+      "count": 346,
+      "lat": 0.5384433,
+      "lng": 123.0594971,
+      "value": 26298.41040462428
+    },
+    {
+      "category": "T3",
+      "city": "kota_gunung_sitoli",
+      "count": 346,
+      "lat": 1.283333,
+      "lng": 97.6,
+      "value": 22961.416184971098
+    },
+    {
+      "category": "T2",
+      "city": "kota_jakarta_pusat",
+      "count": 346,
+      "lat": -6.18234,
+      "lng": 106.8428715,
+      "value": 20800.14450867052
+    },
+    {
+      "category": "T2",
+      "city": "kota_jambi",
+      "count": 346,
+      "lat": -1.6296917,
+      "lng": 103.6077806,
+      "value": 20231.50289017341
+    },
+    {
+      "category": "T3",
+      "city": "kota_jayapura",
+      "count": 346,
+      "lat": -2.5387539,
+      "lng": 140.7037389,
+      "value": 22752.890173410404
+    },
+    {
+      "category": "T2",
+      "city": "kota_kediri",
+      "count": 346,
+      "lat": -7.8111057,
+      "lng": 112.0046051,
+      "value": 20241.184971098264
+    },
+    {
+      "category": "T2",
+      "city": "kota_kendari",
+      "count": 346,
+      "lat": -3.9918068,
+      "lng": 122.5180066,
+      "value": 20597.543352601155
+    },
+    {
+      "category": "T2",
+      "city": "kota_kupang",
+      "count": 346,
+      "lat": -10.1632209,
+      "lng": 123.6017755,
+      "value": 20875.28901734104
+    },
+    {
+      "category": "T2",
+      "city": "kota_lhokseumawe",
+      "count": 346,
+      "lat": 5.1789659,
+      "lng": 97.1480544,
+      "value": 20969.942196531792
+    },
+    {
+      "category": "T2",
+      "city": "kota_lubuk_linggau",
+      "count": 346,
+      "lat": -3.2914053,
+      "lng": 102.8584881,
+      "value": 20568.93063583815
+    },
+    {
+      "category": "T1",
+      "city": "kota_madiun",
+      "count": 346,
+      "lat": -7.6290837,
+      "lng": 111.5168819,
+      "value": 19984.682080924857
+    },
+    {
+      "category": "T1",
+      "city": "kota_makassar",
+      "count": 346,
+      "lat": -5.1342962,
+      "lng": 119.4124282,
+      "value": 19666.329479768785
+    },
+    {
+      "category": "T2",
+      "city": "kota_malang",
+      "count": 346,
+      "lat": -7.9771308,
+      "lng": 112.6340265,
+      "value": 20915.895953757226
+    },
+    {
+      "category": "T3",
+      "city": "kota_maluku",
+      "count": 346,
+      "lat": -3.4593849,
+      "lng": 126.656549,
+      "value": 21994.942196531792
+    },
+    {
+      "category": "T2",
+      "city": "kota_mamuju",
+      "count": 346,
+      "lat": -2.6756302,
+      "lng": 118.8847947,
+      "value": 20398.41040462428
+    },
+    {
+      "category": "T1",
+      "city": "kota_manado",
+      "count": 346,
+      "lat": 1.4900578,
+      "lng": 124.8408708,
+      "value": 18263.29479768786
+    },
+    {
+      "category": "T3",
+      "city": "kota_mataram",
+      "count": 346,
+      "lat": -8.5871166,
+      "lng": 116.1209516,
+      "value": 21444.79768786127
+    },
+    {
+      "category": "T3",
+      "city": "kota_maumere",
+      "count": 346,
+      "lat": -8.6256456,
+      "lng": 122.2192885,
+      "value": 22015.895953757226
+    },
+    {
+      "category": "T1",
+      "city": "kota_medan",
+      "count": 346,
+      "lat": 3.5894617,
+      "lng": 98.6741623,
+      "value": 19878.323699421966
+    },
+    {
+      "category": "T2",
+      "city": "kota_metro",
+      "count": 346,
+      "lat": -5.1078839,
+      "lng": 105.3078642,
+      "value": 20522.832369942196
+    },
+    {
+      "category": "T2",
+      "city": "kota_meulaboh",
+      "count": 346,
+      "lat": 4.1481951,
+      "lng": 96.1339107,
+      "value": 20355.057803468208
+    },
+    {
+      "category": "T1",
+      "city": "kota_padang",
+      "count": 346,
+      "lat": -0.9247587,
+      "lng": 100.3632561,
+      "value": 20047.832369942196
+    },
+    {
+      "category": "T1",
+      "city": "kota_padang_sidempuan",
+      "count": 346,
+      "lat": 1.372696,
+      "lng": 99.2727172,
+      "value": 19650.0
+    },
+    {
+      "category": "T3",
+      "city": "kota_palangkaraya",
+      "count": 346,
+      "lat": -2.2072919,
+      "lng": 113.9164372,
+      "value": 21748.699421965317
+    },
+    {
+      "category": "T3",
+      "city": "kota_palembang",
+      "count": 346,
+      "lat": -2.9888243,
+      "lng": 104.7568507,
+      "value": 22277.456647398845
+    },
+    {
+      "category": "T1",
+      "city": "kota_palopo",
+      "count": 346,
+      "lat": -2.9996306,
+      "lng": 120.1920679,
+      "value": 20000.0
+    },
+    {
+      "category": "T3",
+      "city": "kota_palu",
+      "count": 346,
+      "lat": -0.9051548,
+      "lng": 119.8722373,
+      "value": 21115.606936416185
+    },
+    {
+      "category": "T1",
+      "city": "kota_pangkalpinang",
+      "count": 346,
+      "lat": -2.1206733,
+      "lng": 106.1134604,
+      "value": 18906.50289017341
+    },
+    {
+      "category": "T1",
+      "city": "kota_pekanbaru",
+      "count": 346,
+      "lat": 0.5071624,
+      "lng": 101.4451559,
+      "value": 19458.959537572253
+    },
+    {
+      "category": "T1",
+      "city": "kota_pematang_siantar",
+      "count": 346,
+      "lat": 2.9588631,
+      "lng": 99.0653646,
+      "value": 20182.369942196532
+    },
+    {
+      "category": "T1",
+      "city": "kota_pontianak",
+      "count": 346,
+      "lat": -0.0226903,
+      "lng": 109.3447488,
+      "value": 20145.37572254335
+    },
+    {
+      "category": "T1",
+      "city": "kota_probolinggo",
+      "count": 346,
+      "lat": -7.7441461,
+      "lng": 113.2158401,
+      "value": 20046.242774566475
+    },
+    {
+      "category": "T3",
+      "city": "kota_samarinda",
+      "count": 346,
+      "lat": -0.5017804,
+      "lng": 117.1393089,
+      "value": 21621.676300578034
+    },
+    {
+      "category": "T1",
+      "city": "kota_sampit",
+      "count": 346,
+      "lat": -2.5389113,
+      "lng": 112.949389,
+      "value": 20168.78612716763
+    },
+    {
+      "category": "T2",
+      "city": "kota_semarang",
+      "count": 346,
+      "lat": -6.9903988,
+      "lng": 110.4229104,
+      "value": 20290.751445086706
+    },
+    {
+      "category": "T1",
+      "city": "kota_serang",
+      "count": 346,
+      "lat": -6.1169662,
+      "lng": 106.1518079,
+      "value": 19416.184971098264
+    },
+    {
+      "category": "T2",
+      "city": "kota_sibolga",
+      "count": 346,
+      "lat": 1.736957,
+      "lng": 98.78461,
+      "value": 20475.433526011562
+    },
+    {
+      "category": "T1",
+      "city": "kota_singkawang",
+      "count": 346,
+      "lat": 0.9069861,
+      "lng": 108.9889657,
+      "value": 19233.670520231215
+    },
+    {
+      "category": "T3",
+      "city": "kota_sorong",
+      "count": 346,
+      "lat": -0.8634105,
+      "lng": 131.2544805,
+      "value": 23580.057803468208
+    },
+    {
+      "category": "T2",
+      "city": "kota_sukabumi",
+      "count": 346,
+      "lat": -6.9199289,
+      "lng": 106.9265095,
+      "value": 20640.317919075143
+    },
+    {
+      "category": "T1",
+      "city": "kota_sumenep",
+      "count": 346,
+      "lat": -6.9991798,
+      "lng": 113.8376708,
+      "value": 20131.06936416185
+    },
+    {
+      "category": "T2",
+      "city": "kota_surabaya",
+      "count": 346,
+      "lat": -7.2462836,
+      "lng": 112.7377674,
+      "value": 20571.531791907513
+    },
+    {
+      "category": "T1",
+      "city": "kota_tangerang",
+      "count": 346,
+      "lat": -6.1761924,
+      "lng": 106.6382161,
+      "value": 18482.94797687861
+    },
+    {
+      "category": "T1",
+      "city": "kota_tanjung",
+      "count": 346,
+      "lat": -2.1652925,
+      "lng": 115.383139,
+      "value": 19719.942196531792
+    },
+    {
+      "category": "T1",
+      "city": "kota_tanjung_pandan",
+      "count": 346,
+      "lat": -2.7422808,
+      "lng": 107.6544753,
+      "value": 18149.566473988438
+    },
+    {
+      "category": "T1",
+      "city": "kota_tanjung_pinang",
+      "count": 346,
+      "lat": 0.9236915,
+      "lng": 104.446094,
+      "value": 18393.49710982659
+    },
+    {
+      "category": "T3",
+      "city": "kota_tarakan",
+      "count": 346,
+      "lat": 3.3000169,
+      "lng": 117.6330159,
+      "value": 21397.543352601155
+    },
+    {
+      "category": "T2",
+      "city": "kota_tasikmalaya",
+      "count": 346,
+      "lat": -7.3262484,
+      "lng": 108.2201154,
+      "value": 20744.79768786127
+    },
+    {
+      "category": "T1",
+      "city": "kota_tembilahan",
+      "count": 346,
+      "lat": 0.5071624,
+      "lng": 101.4451559,
+      "value": 19124.85549132948
+    },
+    {
+      "category": "T3",
+      "city": "kota_ternate",
+      "count": 346,
+      "lat": 0.7852043,
+      "lng": 127.3832342,
+      "value": 22111.84971098266
+    },
+    {
+      "category": "T3",
+      "city": "kota_tual",
+      "count": 346,
+      "lat": -5.6389933,
+      "lng": 132.7429249,
+      "value": 24002.023121387283
+    },
+    {
+      "category": "T1",
+      "city": "kota_watampone",
+      "count": 346,
+      "lat": -4.5386807,
+      "lng": 120.3276891,
+      "value": 18980.057803468208
+    },
+    {
+      "category": "T1",
+      "city": "kota_yogyakarta",
+      "count": 346,
+      "lat": -7.8012646,
+      "lng": 110.3646857,
+      "value": 19908.092485549132
+    },
+    {
+      "category": "T1",
+      "city": "kotamobagu",
+      "count": 346,
+      "lat": 0.7352231,
+      "lng": 124.3154057,
+      "value": 19477.023121387283
+    }
+  ],
+  "mode": "actual",
+  "rata_ratanasional": 20932.026398538343
+}

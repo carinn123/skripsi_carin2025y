@@ -1,0 +1,33 @@
+SKRIPSI CARIN
+Sistem Prediksi dan Analisis Harga Minyak Goreng Berbasis Machine Learning (Flask Web App)
+
+Dokumen ini menjelaskan struktur, teknologi, dan cara penggunaan aplikasi web yang dikembangkan untuk keperluan skripsi.
+
+Deskripsi Proyek
+Proyek ini merupakan implementasi aplikasi web berbasis Flask yang digunakan untuk melakukan prediksi dan analisis harga minyak goreng di Indonesia pada tingkat kabupaten/kota. Model machine learning yang digunakan adalah Gradient Boosting (HistGradientBoostingRegressor) dengan pendekatan time series.
+Struktur Folder
+hasil_training/
+models/
+models_packs_uploads/
+notebooks/
+packs/
+static/
+  - app.css
+  - app.js
+  - index.html
+app.py
+
+Teknologi dan Library
+Backend: Python, Flask, Flask-CORS
+Data Processing: Pandas, NumPy
+Machine Learning: Scikit-learn, Joblib
+Analisis Spasial: GeoPandas, Shapely, Fiona, PyProj
+Visualisasi & Reporting: Matplotlib, ReportLab
+Cara Menjalankan Aplikasi
+1. Aktifkan virtual environment
+2. Install dependency menggunakan requirements.txt
+3. Jalankan aplikasi dengan perintah: python app.py
+4. Akses melalui browser di http://127.0.0.1:5000
+Penulis
+Carin
+Skripsi – Sistem Prediksi Harga Minyak Goreng

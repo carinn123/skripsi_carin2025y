@@ -594,26 +594,17 @@ function normalizeProvName(s){
 
 async function showMapBeranda(event){
   const islandInput = document.getElementById('pulau');
-  // allow empty island to mean "Semua Pulau"
   let island = islandInput ? islandInput.value.trim() : '';
   if(!island) island = 'Semua Pulau';
 
-  const tahun = document.getElementById('b_tahun').value;
-  const bulan = document.getElementById('b_bulan').value;
-  const minggu = document.getElementById('b_minggu').value;
+  const tahun  = document.getElementById('b_tahun')?.value;
+  const bulan  = document.getElementById('b_bulan')?.value;
+  const minggu = document.getElementById('b_minggu')?.value;
   const loading = document.getElementById('b_loading');
-  const mode = (document.getElementById('b_mode') && document.getElementById('b_mode').value) || 'actual';
+  const mode =
+    (document.getElementById('b_mode') && document.getElementById('b_mode').value) || 'actual';
 
-  // read bucket_scope UI (#b_scope), fallback auto:
-  let bucket_scope = 'national';
-  const scopeEl = document.getElementById('b_scope');
-  if(scopeEl && scopeEl.value){
-    bucket_scope = scopeEl.value;
-  } else {
-    bucket_scope = (island && island !== 'Semua Pulau') ? 'island' : 'national';
-  }
-
-  // basic validation: require tahun, but NOT pulau (we accept "Semua Pulau")
+  // VALIDATION
   if(!tahun){
     showMapValidation('Pilih Tahun terlebih dahulu.');
     return;
@@ -624,221 +615,149 @@ async function showMapBeranda(event){
   }
   hideMapValidation();
 
-  loading.style.display='inline-block';
+  loading.style.display = 'inline-block';
 
   try{
-    // include_table=1 so server will attempt to return per-city table for the same filters
-    const url = `/api/choropleth?island=${encodeURIComponent(island)}&year=${encodeURIComponent(tahun)}&month=${encodeURIComponent(bulan)}&week=${encodeURIComponent(minggu)}&mode=${encodeURIComponent(mode)}&bucket_scope=${encodeURIComponent(bucket_scope)}&include_table=1`;
+    const url =
+      `/api/choropleth` +
+      `?island=${encodeURIComponent(island)}` +
+      `&year=${encodeURIComponent(tahun)}` +
+      `&month=${encodeURIComponent(bulan || '')}` +
+      `&week=${encodeURIComponent(minggu || '')}` +
+      `&mode=${encodeURIComponent(mode)}` +
+      `&bucket_scope=city`;
 
     const res = await fetch(url, { cache: 'no-store' });
-
-    // robust read + parse with helpful logs
     const raw = await res.text();
-    console.groupCollapsed('choropleth fetch debug');
-    console.log('requested URL:', url);
-    console.log('HTTP status:', res.status, res.statusText);
-    console.log('raw response length:', raw ? raw.length : 0);
-    console.log('raw response (first 1200 chars):', raw ? raw.slice(0,1200) : '');
-    console.groupEnd();
 
     let js;
     try {
       js = raw ? JSON.parse(raw) : null;
-    } catch (err) {
-      console.error('[choropleth] JSON parse failed', err);
-      showMapValidation('Gagal membaca response dari server (invalid JSON). Periksa console/server log.');
-      fillRegionTable([]);
-      if (window.geoLayer) try { window.geoLayer.remove(); } catch(_) {}
-      throw err;
-    }
-
-    if (!res.ok) {
-      const errMsg = (js && js.error) ? js.error : `HTTP ${res.status}`;
-      console.error('choropleth returned error status', res.status, js);
-      showMapValidation(`Server error: ${errMsg}`);
-      fillRegionTable([]);
-      throw new Error(errMsg);
-    }
-
-    console.groupCollapsed('choropleth parsed debug');
-    console.log('parsed keys:', js && Object.keys(js));
-    console.log('data len:', Array.isArray(js && js.data) ? js.data.length : js && js.data);
-    console.log('table len:', Array.isArray(js && js.table) ? js.table.length : js && js.table);
-    console.groupEnd();
-
-    if(!js || (typeof js === 'object' && Object.keys(js).length === 0)){
-      console.warn('choropleth: parsed payload empty, aborting');
-      showMapValidation('Server mengembalikan payload kosong untuk filter ini.');
-      fillRegionTable([]);
+    } catch (e) {
+      console.error('Invalid JSON:', raw);
+      showMapValidation('Response server tidak valid.');
       return;
     }
 
-    
-    // === tampilkan rata-rata nasional per kota (rata_ratanasional) ===
-// === tampilkan rata-rata nasional per kota (rata_ratanasional) ===
-  console.log('DEBUG: js.rata_ratanasional =>', js && js.rata_ratanasional);
-    const rataValServer = js && (js.rata_ratanasional ?? js.rata_ratanasional_value ?? js.rata_rata_nasional);
-    if (rataValServer != null) {
-      const el = document.getElementById('legend_national_mean');
-      const formatted = (typeof rupiah === 'function')
-        ? 'Rp ' + rupiah(Math.round(rataValServer))
-        : 'Rp ' + Math.round(rataValServer).toLocaleString('id-ID');
-      if (el) {
-        el.textContent = `Rata-rata Nasional (per-kota): ${formatted}`;
+    if(!res.ok){
+      showMapValidation(js?.error || 'Server error');
+      return;
+    }
+
+    if(!js || !Array.isArray(js.data)){
+      showMapValidation('Tidak ada data untuk filter ini.');
+      return;
+    }
+
+    // ===============================
+    // UPDATE LEGEND NASIONAL
+    // ===============================
+    const rataVal = js.rata_ratanasional;
+    const elNat = document.getElementById('legend_national_mean');
+    if(elNat){
+      elNat.textContent =
+        rataVal != null
+          ? `Rata-rata Nasional (per-kota): Rp ${rupiah(Math.round(rataVal))}`
+          : 'Rata-rata Nasional (per-kota): -';
+    }
+
+    // ===============================
+    // UPDATE LEGEND TERTIL
+    // ===============================
+    const bucketEl = document.getElementById('t1-mean');
+    if(bucketEl && js.buckets){
+      const T1 = js.buckets.T1;
+      const T2 = js.buckets.T2;
+
+      if(T1 != null && T2 != null){
+        bucketEl.innerText =
+          `T1 : ≤ Rp ${rupiah(Math.round(T1))}\n` +
+          `T2 : > Rp ${rupiah(Math.round(T1))} – ≤ Rp ${rupiah(Math.round(T2))}\n` +
+          `T3 : > Rp ${rupiah(Math.round(T2))}`;
       } else {
-        console.warn('legend_national_mean element not found');
-        const container = document.querySelector('.legend') || document.body;
-        const p = document.createElement('p');
-        p.id = 'legend_national_mean';
-        p.style.marginTop = '8px';
-        p.style.fontSize = '0.95rem';
-        p.style.color = '#214';
-        p.style.fontWeight = '600';
-        p.innerHTML = `Rata-rata Nasional (per-kota): ${formatted}<br><small style="font-weight:400;color:#666">(dihitung dari rata-rata kota sesuai filter)</small>`;
-        container.insertAdjacentElement('afterend', p);
+        bucketEl.innerText = 'Range bucket: -';
       }
-    } else {
-      const el = document.getElementById('legend_national_mean');
-      if (el) el.textContent = 'Rata-rata Nasional (per-kota): - (tidak ada data untuk filter)';
     }
 
-    // === RANGE BUCKETS T1 / T2 / T3 ===
-    try {
-      const bucketEl = document.getElementById('t1-mean');
-      if (bucketEl && js && js.buckets) {
-        const scopeFromServer = js.bucket_scope || bucket_scope;  // pakai info dari server kalau ada
-
-        const fmtRupiah = (v) => {
-          if (v == null) return '-';
-          const n = Math.round(Number(v));
-          return (typeof rupiah === 'function')
-            ? 'Rp ' + rupiah(n)
-            : 'Rp ' + n.toLocaleString('id-ID');
-        };
-
-        let text = 'Range bucket: -';
-
-        if (scopeFromServer === 'national') {
-          const T1 = js.buckets?.T1;
-          const T2 = js.buckets?.T2;
-          if (T1 != null && T2 != null) {
-            text =
-              `T1: ≤ ${fmtRupiah(T1)}\n` +
-              `T2: > ${fmtRupiah(T1)} – ≤ ${fmtRupiah(T2)}\n` +
-              `T3: > ${fmtRupiah(T2)}`;
-          } else {
-            text = 'Range bucket: - (batas T1/T2 tidak tersedia)';
-          }
-        } else if (scopeFromServer === 'island') {
-          // cari bucket khusus pulau yang dipilih
-          const selectedIsl = (island || '').trim();
-          const key = selectedIsl && selectedIsl.toLowerCase() !== 'semua pulau'
-            ? selectedIsl.toUpperCase()
-            : null;
-          const bucket = key ? js.buckets[key] : null;
-          if (bucket && bucket.T1 != null && bucket.T2 != null) {
-            text =
-              `T1 : ≤ ${fmtRupiah(bucket.T1)}\n` +
-              `T2 : > ${fmtRupiah(bucket.T1)} – ≤ ${fmtRupiah(bucket.T2)}\n` +
-              `T3 : > ${fmtRupiah(bucket.T2)}`;
-          } else {
-            text = 'Range bucket: - (batas untuk pulau ini tidak tersedia)';
-          }
-        }
-
-        bucketEl.innerText = text; // pakai innerText supaya \n jadi baris baru
-      }
-    } catch (err) {
-      console.warn('Gagal update legend bucket T1/T2/T3', err);
-    }
-
-
+    // ===============================
+    // MAP INIT
+    // ===============================
     const m = ensureMap();
-    const gj = await getProvGeoJSON();
-    
-    // build vmap for choropleth painting
-    const vmap = Object.fromEntries((js.data||[]).map(d=>[normProv(d.province), { val:d.value, cat:d.category, label:d.province, n_cities: d.n_cities || d.n_kota || 0 }]));
 
-    if(window.geoLayer) window.geoLayer.remove();
-    window.geoLayer = L.geoJSON(gj, {
-      style: f => {
-        const rawn = f.properties.Propinsi || f.properties.PROVINSI || f.properties.provinsi || f.properties.name || f.properties.NAMOBJ || "";
-        const rec = vmap[normProv(rawn)];
-        const fill = rec ? (rec.cat==='T1' ? '#2ecc71' : rec.cat==='T2' ? '#f1c40f' : '#e74c3c') : '#bdc3c7';
-        return { color:'#fff', weight:1, fillColor:fill, fillOpacity:.85 };
-      },
-      onEachFeature: (feature, layer) => {
-        const rawn = feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "—";
-        const rec = vmap[normProv(rawn)];
-        const valueRaw = rec ? (('val' in rec) ? rec.val : (rec.value ?? null)) : null;
-        const val = (valueRaw == null) ? null : Math.round(Number(valueRaw));
-        const cat = rec ? (rec.cat || rec.category || 'no-data') : 'no-data';
-        let meta = '';
-        // if (js.mode === 'predicted' || js.generated_at || js.model_version) {
-        //   // const gen = js.generated_at ? `Generated: ${js.generated_at}` : '';
-        //   const mv  = js.model_version ? `Model: ${js.model_version}` : '';
-        //   // meta = `<br/><small style="color:#6b7280">${[gen, mv].filter(Boolean).join(' • ')}</small>`;
-        // }
-        const nCitiesInfo = rec && rec.n_cities ? `<br/><small>Jumlah kota: ${rec.n_cities}</small>` : '';
-        layer.bindPopup(`<b>${rawn}</b><br/>${val ? ('Rp '+rupiah(val)) : '—'}<br/>Kategori: ${escapeHtml(cat)}${nCitiesInfo}`);
-
-        layer.on('click', function(e){
-          const provName = (feature.properties.Propinsi || feature.properties.PROVINSI || feature.properties.provinsi || feature.properties.name || feature.properties.NAMOBJ || "").trim();
-          if(!provName) return;
-          if(typeof loadRegionSummaryForProvince === 'function'){
-             const tahun = document.getElementById('b_tahun')?.value || '';
-            const bulan = document.getElementById('b_bulan')?.value || '';
-            const minggu = document.getElementById('b_minggu')?.value || '';
-            const mode = (document.getElementById('b_mode') && document.getElementById('b_mode').value) || 'actual';
-            loadRegionSummaryForProvince(provName, 1, { year: tahun, month: bulan, week: minggu, mode }).catch(err => console.error('loadRegionSummaryForProvince', err));
-
-          }
-        }
-      
-      );
-      }
-    }).addTo(m);
-
-    try { m.fitBounds(window.geoLayer.getBounds(), {padding:[20,20]}); } catch(e){}
-
-    // === TABLE: map server table rows to expected fillRegionTable format
-    // If server didn't include ref_mean, compute fallback on client
-    let tableRows = [];
-   
-    if(tableRows.length > 300){
-      showMapValidation(`Menampilkan ${tableRows.length} baris untuk "Semua Pulau" — mungkin butuh beberapa detik untuk render.` );
-      setTimeout(hideMapValidation, 4000);
+    // HAPUS LAYER LAMA
+    if(window.pinLayer){
+      window.pinLayer.clearLayers();
+    } else {
+      window.pinLayer = L.layerGroup().addTo(m);
     }
 
-    fillRegionTable(tableRows);
+    // ===============================
+    // RENDER PIN POINT
+    // ===============================
+    js.data.forEach(d => {
+      if(d.lat == null || d.lng == null) return;
 
-    // === update informasi statistik ===
+      const color =
+        d.category === 'T1' ? '#f14040ff' :
+        d.category === 'T2' ? '#e06d67ff' :
+        d.category === 'T3' ? '#b02212ff' :
+        '#bdc3c7';
+
+      const marker = L.circleMarker([d.lat, d.lng], {
+        radius: 6,
+        fillColor: color,
+        color: '#ebddddff',
+        weight: 1,
+        fillOpacity: 0.85
+      });
+
+      marker.bindPopup(`
+        <b>${d.city}</b><br/>
+        ${d.value != null ? 'Rp ' + rupiah(Math.round(d.value)) : '—'}<br/>
+        Kategori: ${d.category}<br/>
+        Jumlah data: ${d.count ?? '-'}
+      `);
+
+      marker.addTo(window.pinLayer);
+    });
+
+    // ===============================
+    // AUTO ZOOM
+    // ===============================
+    const bounds = L.latLngBounds(
+      js.data
+        .filter(d => d.lat != null && d.lng != null)
+        .map(d => [d.lat, d.lng])
+    );
+
+    if(bounds.isValid()){
+      m.fitBounds(bounds, { padding: [30, 30] });
+    }
+
+    // ===============================
+    // UPDATE INFO TEKS
+    // ===============================
     document.getElementById('statPulau').textContent = island || 'Semua Pulau';
+
     let scope = `Tahun ${tahun}`;
     if(bulan) scope = `Bulan ${monthsID[+bulan]} ${tahun}`;
     if(bulan && minggu) scope = `Minggu ke-${minggu}, ${monthsID[+bulan]} ${tahun}`;
     document.getElementById('statScope').textContent = scope;
 
-    if(js.generated_at){
-      try{
-        const d = new Date(js.generated_at);
-        const opt = { year:'numeric', month:'short', day:'numeric' };
-        document.getElementById('statLast').textContent = `Predicted: ${d.toLocaleDateString('id-ID', opt)}`;
-      }catch(e){
-        document.getElementById('statLast').textContent = `Predicted: ${js.generated_at.split('T')[0]}`;
-      }
-    } else {
-      document.getElementById('statLast').textContent = js.last_actual || '-';
-    }
+    document.getElementById('statLast').textContent =
+      js.generated_at || js.last_actual || '-';
 
-  }catch(e){
-    console.error(e);
-    alert('Gagal menampilkan peta & tabel: '+(e.message||e));
-    fillRegionTable([]);
-  }finally{
-    loading.style.display='none';
+  } catch(err){
+    console.error(err);
+    alert('Gagal menampilkan peta: ' + err.message);
+  } finally {
+    loading.style.display = 'none';
   }
 }
+
+window.showMapBeranda = showMapBeranda;
+
+
 window.showMapBeranda = showMapBeranda;
 
 /* ---------- init wiring (filters) ---------- */

@@ -65,6 +65,8 @@ TOPN_XLSX = BASE_DIR / "data" / "topn_per_tahun_per_kota.csv"
 REGIONAL_XLSX = BASE_DIR / "data" / "regional_correlation_summary.xlsx"
 _REGION_CACHE = {"mtime": None, "df": None}
 
+with open("static/city_coords.json", "r", encoding="utf-8") as f:
+    CITY_COORDS = json.load(f)
 # Cache evaluasi di memory
 _EVAL_CACHE = None
 
@@ -435,13 +437,23 @@ def _basic_stats(arr: np.ndarray) -> dict:
     }
 
 
+import re
+
 def _slugify_city(name: str) -> str:
     s = (name or "").strip().lower()
-    # anggap spasi atau '-' sama-sama dipetakan ke underscore
-    s = re.sub(r"[\s\-]+", "_", s)
-    s = re.sub(r"[^\w_]", "", s)
-    return s
 
+    # NORMALISASI FORMAT FILE PREDICTED
+    # kab._banyumas -> kab_banyumas
+    # kota._padang  -> kota_padang
+    s = s.replace("kab._", "kab_").replace("kota._", "kota_")
+
+    # samakan separator
+    s = re.sub(r"[\s\-]+", "_", s)
+
+    # hapus karakter aneh
+    s = re.sub(r"[^\w_]", "", s)
+
+    return s
 def _load_eval_metrics():
     """Baca Excel evaluasi (Kota, MAE, RMSE, MAPE, R2) -> dict per slug kota."""
     global _EVAL_CACHE
@@ -1096,793 +1108,261 @@ RC_PRED_MAX_WORKERS = 6
 RC_PRED_HORIZON_LIMIT = 365
 
 
+def _normalize_city_from_pred(s: str) -> str:
+    """
+    'kab._banyumas' -> 'kab_banyumas'
+    'kota_padang'   -> 'kota_padang'
+    """
+    return (s or "").lower().replace(".", "").strip()
 
-def _load_precomputed_choropleth(year, month=None, week=None, island=None):
-    # key includes island to cache per-filter
-    key = f"choropleth:{year}:{month or 'all'}:{week or 'all'}:{(island or '').strip().upper()}"
-    if key in _PRECOMP_CACHE:
-        return _PRECOMP_CACHE[key]
+def load_predicted_city_choropleth(year, month=None, week=None, island=None):
+    """
+    Load choropleth predicted data at CITY level (no province aggregation)
+    """
 
     base = Path("static/data_01_")
     payloads = []
+
     def _read_file(fp):
         try:
             with open(fp, "r", encoding="utf-8") as f:
-                p = json.load(f)
-                # attach filename for debugging / fallback if needed
-                if isinstance(p, dict):
-                    p["_source_file"] = str(fp)
-                return p
-        except Exception as e:
-            app.logger.debug(f"Failed reading precomputed file {fp}: {e}")
+                return json.load(f)
+        except Exception:
             return None
 
-    if month is None:
-        files = sorted(base.glob(f"choropleth_pred_{year:04d}_*.json"))
-        for fp in files:
+    # =========================
+    # LOAD FILE
+    # =========================
+    if month and week:
+        fp = base / f"choropleth_pred_{year:04d}_{int(month):02d}_w{int(week)}.json"
+        if fp.exists():
             p = _read_file(fp)
-            if p and isinstance(p.get("data", []), list):
+            if p:
                 payloads.append(p)
-    else:
-        if week:
-            fp = base / f"choropleth_pred_{year:04d}_{int(month):02d}_w{int(week)}.json"
-            if fp.exists():
-                p = _read_file(fp)
-                if p: payloads.append(p)
+    elif month:
         fp = base / f"choropleth_pred_{year:04d}_{int(month):02d}.json"
         if fp.exists():
             p = _read_file(fp)
-            if p: payloads.append(p)
+            if p:
+                payloads.append(p)
+    else:
+        files = sorted(base.glob(f"choropleth_pred_{year:04d}_*.json"))
+        for fp in files:
+            p = _read_file(fp)
+            if p:
+                payloads.append(p)
 
     if not payloads:
         return None
 
-    combined = []
-    raw_entries = []
+    # =========================
+    # FLATTEN CITY DATA
+    # =========================
+    rows = []
     for p in payloads:
-        # read file-level period info; prefer explicit fields in payload, fallback to function args
-        p_year = p.get("year") or year
-        p_month = p.get("month") if p.get("month") is not None else None
-        p_week = p.get("week") if p.get("week") is not None else None
-        generated_at = p.get("generated_at")
+        for d in p.get("data", []):
+            city = d.get("city")
+            value = _safe_float_or_none(d.get("value"))
+            province = d.get("province")
+            isl = d.get("island")
 
-        for entry in p.get("data", []):
-            # guard against non-dict entries
-            if not isinstance(entry, dict):
-                continue
-            city_val = entry.get("city") or entry.get("entity") or entry.get("kota") or entry.get("name") or None
-            province = entry.get("province") or entry.get("provinsi") or entry.get("province_name") or None
-            island_from_entry = entry.get("island") or entry.get("pulau") or None
-            # nilai numeric
-            value = _safe_float_or_none(entry.get("value") or entry.get("harga") or None)
-
-            # require province and numeric value to include (sama seperti sebelumnya)
-            if province is None or value is None:
+            if not city or value is None:
                 continue
 
-            # construct a representative date string that pandas can parse:
-            # prefer week+month (if present), else month, else year
-            try:
-                py = int(p_year)
-            except Exception:
-                py = int(year)
+            rows.append({
+                "city": city.strip(),
+                "province": province.strip() if province else None,
+                "island": isl.strip() if isinstance(isl, str) else isl,
+                "value": value
+            })
 
-            pm = int(p_month) if p_month is not None else None
-            pw = int(p_week) if p_week is not None else None
+    if not rows:
+        return None
 
-            if pw is not None and pm is not None:
-                # approximate day within month by week index (safe bound to 28)
-                day = min(1 + (pw - 1) * 7, 28)
-                date_str = f"{py:04d}-{pm:02d}-{day:02d}"
-            elif pm is not None:
-                date_str = f"{py:04d}-{pm:02d}-01"
-            else:
-                date_str = f"{py:04d}-01-01"
+    df = pd.DataFrame(rows)
 
-            rec = {
-                "entity": str(city_val).strip() if city_val else None,
-                "province": str(province).strip() if province is not None else None,
-                # keep raw island but normalize strings
-                "island": island_from_entry.strip() if isinstance(island_from_entry, str) else island_from_entry,
-                "value": value,
-                # add period metadata so downstream can compute min/max by period
-                "period_year": py,
-                "period_month": pm,
-                "period_week": pw,
-                # "generated_at": generated_at,
-                # date string parseable by pandas
-                "date": date_str,
-                # source file (helpful for debugging)
-                "_source_file": p.get("_source_file")
-            }
-            combined.append(rec)
-            raw_entries.append(rec)
-
-    if not combined:
-        out = {"year": year, "month": month, "week": week,
-               "generated_at": payloads[0].get("generated_at"),
-               "model_version": payloads[0].get("model_version"),
-               "data": []}
-        _PRECOMP_CACHE[key] = out
-        return out
-
-    df = pd.DataFrame(combined)
-
-    # infer island if missing (same as before)
-    def infer_island(row):
-        if row.get("island"):
-            return str(row["island"]).strip()
-        prov = str(row.get("province") or "").strip()
-        return PROVINCE_TO_ISLAND.get(prov.upper()) or PROVINCE_TO_ISLAND.get(prov) or None
-
-    df["island"] = df.apply(infer_island, axis=1)
-
-    # if island param supplied, still allow passing it to filter
+    # =========================
+    # FILTER ISLAND (OPTIONAL)
+    # =========================
     if island and island.strip().lower() != "semua pulau":
-        df = df[df["island"].astype(str).str.upper() == str(island).strip().upper()]
+        df = df[df["island"].str.upper() == island.strip().upper()]
 
     if df.empty:
-        out = {"year": year, "month": month, "week": week,
-               "generated_at": payloads[0].get("generated_at"),
-               "model_version": payloads[0].get("model_version"),
-               "data": []}
-        _PRECOMP_CACHE[key] = out
-        return out
+        return None
 
-    # normalize entity and ensure date is parseable by pandas (we already built date strings)
-    df["entity_norm"] = df["entity"].fillna("").astype(str).str.strip()
-    df.loc[df["entity_norm"] == "", "entity_norm"] = None
-    # parse date column to datetime so later logic that expects dates works:
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    # =========================
+    # AGGREGATE PER CITY
+    # =========================
+    city_df = (
+        df.groupby("city", as_index=False)
+          .agg(
+              value=("value", "mean"),
+              province=("province", "first"),
+              island=("island", "first")
+          )
+    )
 
-    city_df = df.dropna(subset=["entity_norm"]).groupby("entity_norm", dropna=True).agg(
-        city_mean=("value","mean"),
-        province=("province","first"),
-        island=("island","first")
-    ).reset_index().rename(columns={"entity_norm":"entity"})
-
-    # keep no-entity rows aggregated by province
-    no_entity_df = df[df["entity_norm"].isna()].groupby("province", dropna=True).agg(
-        province_mean_rows=("value","mean")
-    ).reset_index()
-
-    prov_from_cities = city_df.groupby("province").agg(value=("city_mean","mean"), n_cities=("entity","nunique")).reset_index()
-
-    if not no_entity_df.empty:
-        no_entity_df["province"] = no_entity_df["province"].astype(str).str.strip()
-        prov_from_cities = prov_from_cities.merge(no_entity_df, on="province", how="outer")
-        prov_from_cities["value"] = prov_from_cities["value"].fillna(prov_from_cities["province_mean_rows"])
-        mask_both = prov_from_cities["province_mean_rows"].notna() & prov_from_cities["n_cities"].notna()
-        if mask_both.any():
-            prov_from_cities.loc[mask_both, "value"] = (
-                (prov_from_cities.loc[mask_both, "value"] * prov_from_cities.loc[mask_both, "n_cities"])
-                + prov_from_cities.loc[mask_both, "province_mean_rows"]
-            ) / (prov_from_cities.loc[mask_both, "n_cities"] + 1)
-            prov_from_cities.loc[mask_both, "n_cities"] = prov_from_cities.loc[mask_both, "n_cities"] + 1
-        prov_from_cities["n_cities"] = prov_from_cities["n_cities"].fillna(1).astype(int)
-        prov_from_cities = prov_from_cities[["province","value","n_cities"]]
+    # =========================
+    # TERTIL (CITY BASED)
+    # =========================
+    vals = city_df["value"].dropna().values
+    if len(vals):
+        q1, q2 = np.quantile(vals, [1/3, 2/3])
     else:
-        prov_from_cities["n_cities"] = prov_from_cities["n_cities"].fillna(0).astype(int)
+        q1 = q2 = None
 
-    # normalize province strings
-    prov_from_cities["province"] = prov_from_cities["province"].astype(str).str.strip()
-    prov_from_cities["value"] = prov_from_cities["value"].astype(float)
+    def cat(v):
+        if q1 is None:
+            return "no-data"
+        if v <= q1:
+            return "T1"
+        if v <= q2:
+            return "T2"
+        return "T3"
 
-    # map to island; keep possible None here but we'll normalize when emitting
-    prov_from_cities["island"] = prov_from_cities["province"].str.upper().map(PROVINCE_TO_ISLAND)
-    for i, row in prov_from_cities.iterrows():
-        if not row["island"]:
-            vals = df.loc[df["province"].str.strip() == row["province"], "island"].dropna().unique()
-            prov_from_cities.at[i, "island"] = vals[0] if len(vals) else None
+    # =========================
+    # MERGE COORDINATES
+    # =========================
+    data_out = []
+    for r in city_df.itertuples(index=False):
+        key = _slugify_city(r.city)
+        coord = CITY_COORDS.get(key)
+        if not coord:
+            continue
 
-    # build out_data but normalize island -> safe string (no None keys later)
-    # additionally, compute per-city min/max period and attach into raw_entries for downstream table building
-    # compute city-level min/max rows (so we can provide period info if needed)
-    min_idx = df.dropna(subset=["entity_norm"]).groupby("entity_norm")["value"].idxmin()
-    max_idx = df.dropna(subset=["entity_norm"]).groupby("entity_norm")["value"].idxmax()
-    city_min_map = {}
-    city_max_map = {}
-    if isinstance(min_idx, pd.Series) or isinstance(min_idx, pd.Index):
-        for idx in min_idx:
-            r = df.loc[idx]
-            city_min_map[str(r["entity"]).strip()] = {
-                "min_value": float(r["value"]),
-                "min_date": (r["date"].date().isoformat() if not pd.isna(r["date"]) else None),
-                "min_period": {"year": r.get("period_year"), "month": r.get("period_month"), "week": r.get("period_week")},
-                "source_file": r.get("_source_file")
-            }
-    if isinstance(max_idx, pd.Series) or isinstance(max_idx, pd.Index):
-        for idx in max_idx:
-            r = df.loc[idx]
-            city_max_map[str(r["entity"]).strip()] = {
-                "max_value": float(r["value"]),
-                "max_date": (r["date"].date().isoformat() if not pd.isna(r["date"]) else None),
-                "max_period": {"year": r.get("period_year"), "month": r.get("period_month"), "week": r.get("period_week")},
-                "source_file": r.get("_source_file")
-            }
-
-    out_data = []
-    for r in prov_from_cities.itertuples(index=False):
-        isl_val = r.island
-        if isl_val is None or (isinstance(isl_val, float) and pd.isna(isl_val)):
-            isl_key = "unknown"
-            isl_emit = None
-        else:
-            isl_key = str(isl_val).strip()
-            isl_emit = isl_key if isl_key else "unknown"
-
-        out_data.append({
+        data_out.append({
+            "city": r.city,
             "province": r.province,
+            "island": r.island,
             "value": float(r.value),
-            "island": isl_emit,
-            "n_cities": int(r.n_cities)
+            "category": cat(r.value),
+            "lat": coord["lat"],
+            "lng": coord["lng"]
         })
 
-    out = {
-        "year": year, "month": month, "week": week,
-        "generated_at": payloads[0].get("generated_at"),
-        "model_version": payloads[0].get("model_version"),
-        "data": out_data,
-        # raw_entries now include date & period_* fields so downstream can compute min/max properly
-        "raw_entries": raw_entries
+    return {
+        "mode": "predicted",
+        "bucket_scope": "city",
+        "buckets": {
+            "T1": float(q1) if q1 is not None else None,
+            "T2": float(q2) if q2 is not None else None
+        },
+        "data": data_out
     }
-    _PRECOMP_CACHE[key] = out
-    return out
 
-# ----------------- API endpoint -----------------
+## ----------------- API endpoint -----------------
 @app.route("/api/choropleth")
 def api_choropleth():
     try:
-        island = (request.args.get("island") or "Semua Pulau").strip()
-        year_q = (request.args.get("year") or "").strip()
-        month_q = (request.args.get("month") or "").strip()
-        week_q = (request.args.get("week") or "").strip()
-        mode = (request.args.get("mode") or "actual").strip().lower()
+        mode = request.args.get("mode", "actual")
 
-        # new params
-        bucket_scope = (request.args.get("bucket_scope") or "national").strip().lower()
-        if bucket_scope not in ("national", "island"):
-            return jsonify({"error":"bucket_scope harus 'national' atau 'island'"}), 400
-        include_table = str(request.args.get("include_table") or request.args.get("table") or "0").lower() in ("1","true","yes")
+        year  = int(request.args.get("year"))
+        month = request.args.get("month", type=int)
+        week  = request.args.get("week", type=int)
+        island = request.args.get("island")
 
-        if not year_q:
-            return jsonify({"error":"param ?year= wajib"}), 400
-        try:
-            year = int(year_q)
-            month = int(month_q) if month_q else None
-            week = int(week_q) if week_q else None
-        except Exception:
-            return jsonify({"error":"format year/month/week tidak valid"}), 400
-
+        # =========================================================
+        # =================== PREDICTED (CITY) ====================
+        # =========================================================
         if mode == "predicted":
-            pre = _load_precomputed_choropleth(year, month, week, island)
-            if pre is None:
-                app.logger.info(f"No precomputed file found for {year}-{month} w{week}, fallback to actual")
-                mode = "actual"
-            else:
-                        raw = pre.get("data", []) or []
-                        # filter by island early if requested
-                        if island and island.strip().lower() != "semua pulau":
-                            def _isl_ok(x):
-                                try:
-                                    return str((x.get("island") or "")).strip().lower() == island.strip().lower()
-                                except Exception:
-                                    return False
-                            raw = [p for p in raw if isinstance(p, dict) and _isl_ok(p)]
+            resp = load_predicted_city_choropleth(
+                year=year,
+                month=month,
+                week=week,
+                island=island
+            )
 
-                        # if after filtering nothing remains -> return empty predicted response
-                        if not raw:
-                            resp_empty = {
-                                "mode": "predicted",
-                                "year": year,
-                                "month": month,
-                                "week": week,
-                                "generated_at": pre.get("generated_at"),
-                                "model_version": pre.get("model_version"),
-                                "buckets": None,
-                                "data": [],
-                                "table": [],
-                                "count" : 0
-                            }
-                            return jsonify(_sanitize_for_json(resp_empty))
+            return jsonify({
+                "mode": "predicted",
+                "bucket_scope": "city",
+                "buckets": None,
+                "rata_ratanasional": None,
+                "data": resp.get("data", []) if resp else []
+            })
 
-                        # --- build a normalized DataFrame from raw entries ---------------------------
-                        # Normalize keys; create DataFrame defensively
-                        df_c = pd.DataFrame(raw)
-
-                        # normalize column names to lowercase simple keys
-                        if len(df_c.columns):
-                            colmap = {c: str(c).strip().lower() for c in df_c.columns}
-                            df_c.rename(columns=colmap, inplace=True)
-
-                        # Ensure 'city' column exists: try common alternatives, then extract from dicts, else synthesize
-                        if "city" not in df_c.columns:
-                            for cand in ("entity", "name", "kota", "entity_name"):
-                                if cand in df_c.columns:
-                                    df_c = df_c.rename(columns={cand: "city"})
-                                    break
-
-                        if "city" not in df_c.columns:
-                            # Try to extract from original raw list
-                            extracted = []
-                            for i, entry in enumerate(raw):
-                                val = None
-                                if isinstance(entry, dict):
-                                    for k in ("city", "entity", "name", "kota"):
-                                        if k in entry and entry.get(k) not in (None, ""):
-                                            val = entry.get(k)
-                                            break
-                                if val in (None, ""):
-                                    val = f"city_{i}"
-                                extracted.append(val)
-                            df_c["city"] = extracted
-
-                        # Normalize province column variants
-                        if "province" not in df_c.columns and "provinsi" in df_c.columns:
-                            df_c["province"] = df_c["provinsi"].astype(str)
-
-                        # Ensure 'value' exists and convert to numeric (coerce)
-                        if "value" in df_c.columns:
-                            # keep original but create cleaned numeric column
-                            df_c["value"] = pd.to_numeric(df_c["value"], errors="coerce")
-                        else:
-                            df_c["value"] = pd.NA
-
-                        # Normalize island column to stripped strings when present
-                        if "island" in df_c.columns:
-                            df_c["island"] = df_c["island"].apply(lambda x: str(x).strip() if pd.notna(x) else None)
-                        else:
-                            df_c["island"] = pd.NA
-
-                        # Parse date if present
-                        if "date" in df_c.columns:
-                            df_c["date"] = pd.to_datetime(df_c["date"], errors="coerce")
-                        # -----------------------------------------------------------------------------
-
-                        # keep only rows with numeric value for city-level stats
-                        city_df = df_c.dropna(subset=["value"]).copy()
-
-                        if city_df.empty:
-                            city_stats = pd.DataFrame(columns=["city", "mean_val", "min_val", "max_val", "cnt", "province", "island"])
-                        else:
-                            # group on string city (guard against non-string)
-                            city_stats = city_df.groupby(city_df["city"].astype(str)).agg(
-                                mean_val=("value", "mean"),
-                                min_val=("value", "min"),
-                                max_val=("value", "max"),
-                                cnt=("value", "count")
-                            ).reset_index().rename(columns={"city": "city"})
-                            prov_map = {}
-                            isl_map = {}
-                            # attach province/island where available (pick first non-null per city)
-                            if "province" in city_df.columns and city_df["province"].notna().any():
-                                prov_map = city_df[["city", "province"]].drop_duplicates("city").set_index("city")["province"].to_dict()
-                                city_stats["province"] = city_stats["city"].map(prov_map)
-                                # map province -> island using PROVINCE_TO_ISLAND robustly
-                                def _map_prov_to_island(p):
-                                    if p is None or (isinstance(p, float) and pd.isna(p)):
-                                        return None
-                                    pk = str(p).strip()
-                                    if not pk:
-                                        return None
-                                    if PROVINCE_TO_ISLAND:
-                                        if pk in PROVINCE_TO_ISLAND:
-                                            return PROVINCE_TO_ISLAND[pk]
-                                        # try case-insensitive match
-                                        for k, v in PROVINCE_TO_ISLAND.items():
-                                            if str(k).strip().casefold() == pk.casefold():
-                                                return v
-                                    return None
-                                city_stats["island"] = city_stats["province"].map(_map_prov_to_island)
-                            else:
-                                # fallback: try to map from city_df['island'] if available
-                                if "island" in city_df.columns and city_df["island"].notna().any():
-                                    isl_map = city_df[["city", "island"]].drop_duplicates("city").set_index("city")["island"].to_dict()
-                                city_stats["province"] = city_stats["city"].map(lambda c: prov_map.get(c) if 'prov_map' in locals() else None)
-                                city_stats["island"] = city_stats["city"].map(lambda c: isl_map.get(c) if isl_map else None)
-
-                        # Normalize numeric fields in city_stats
-                        city_stats["mean_val"] = city_stats["mean_val"].apply(_safe_float_or_none)
-                        city_stats["min_val"] = city_stats["min_val"].apply(_safe_float_or_none)
-                        city_stats["max_val"] = city_stats["max_val"].apply(_safe_float_or_none)
-                        city_stats["cnt"] = city_stats["cnt"].fillna(0).astype(int)
-
-                        # --- province-level aggregation: mean of city means --------------------------------
-                        # group by province (allow None groups)
-                        prov_vals = city_stats.groupby("province", dropna=False, as_index=False).agg(
-                            value=("mean_val", "mean"),
-                            n_cities=("city", "nunique")
-                        ).reset_index()
-                        prov_vals["value"] = prov_vals["value"].apply(_safe_float_or_none)
-                        # normalize province string
-                        prov_vals["province"] = prov_vals["province"].apply(lambda x: None if pd.isna(x) else str(x).strip())
-
-                        # derive island for prov_vals where missing, using PROVINCE_TO_ISLAND or city-level island data
-                        prov_vals["island"] = prov_vals["province"].map(lambda p: (PROVINCE_TO_ISLAND.get(p) if p and PROVINCE_TO_ISLAND else None) if p else None)
-                        for i, row in prov_vals.iterrows():
-                            if not row.get("island"):
-                                # try city-level island or df_c island values
-                                province_key = row.get("province") or ""
-                                vals = df_c.loc[df_c["province"].astype(str).str.strip() == province_key, "island"].dropna().unique()
-                                prov_vals.at[i, "island"] = vals[0] if len(vals) else None
-                        # ----------------------------------------------------------------------------------
-                        def _isl_key_emit(k):
-                            if k is None: return "unknown"
-                            if isinstance(k, float) and pd.isna(k): return "unknown"
-                            s = str(k).strip()
-                            return s if s else "unknown"
-                        # build buckets & data_out (respect bucket_scope)
-           
-                        # series of island means (unweighted mean of province values)
-                        island_means_series = prov_vals.groupby("island", dropna=False)["value"].mean()
-                        island_means = {}
-                        for isl_raw, v in island_means_series.items():
-                            island_means[_isl_key_emit(isl_raw)] = _safe_float_or_none(v)
-
-                        # national mean (exclude None)
-                        vals_all = [v for v in prov_vals["value"].tolist() if v is not None]
-                        national_mean = _safe_float_or_none(np.mean(vals_all) if vals_all else None)
-                        # pakai rata-rata per-kota (city_stats.mean_val) untuk national mean
-                        city_vals = [ _safe_float_or_none(v) for v in city_stats["mean_val"].tolist() if v is not None ]
-                        rata_ratanasional = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
-
-                        data_out = []
-                        buckets_out = None
-
-                        if bucket_scope == "island":
-                            buckets_out = {}
-                            # group by island; note groupby will put NaN island into group with key NaN -> convert to None string key
-                            for isl_name, grp in prov_vals.groupby("island", dropna=False):
-                                # use None for missing island to keep JSON-friendly
-                                key = _isl_key_emit(isl_name)
-                                vals = [v for v in grp["value"].tolist() if v is not None]
-                                if vals:
-                                    try:
-                                        q1_raw, q2_raw = np.quantile(np.array(vals), [1/3, 2/3])
-                                    except Exception:
-                                        q1_raw = q2_raw = None
-                                    q1 = _safe_float_or_none(q1_raw); q2 = _safe_float_or_none(q2_raw)
-                                else:
-                                    q1 = q2 = None
-                                buckets_out[key] = {"T1": q1, "T2": q2}
-                                def cat_local(v):
-                                    if v is None or q1 is None: return "no-data"
-                                    if v <= q1: return "T1"
-                                    if v <= q2: return "T2"
-                                    return "T3"
-                                for r in grp.itertuples(index=False):
-                                    v = _safe_float_or_none(getattr(r, "value", None))
-                                    island_raw = getattr(r, "island", None)
-                                    island_key = _isl_key_emit(island_raw)
-                                    data_out.append({
-                                        "province": getattr(r, "province", None),
-                                        "value": v,
-                                        "category": cat_local(v),
-                                        "island": key,
-                                        "n_cities": int(getattr(r, "n_cities", 0) or 0),
-                                        "island_mean": island_means.get(island_key),
-                                        "national_mean": national_mean,
-                                        "national_means": rata_ratanasional
-                                    })
-                        else:
-                            vals = [v for v in prov_vals["value"].tolist() if v is not None]
-                            if vals:
-                                try:
-                                    q1_raw, q2_raw = np.quantile(np.array(vals), [1/3, 2/3])
-                                except Exception:
-                                    q1_raw = q2_raw = None
-                            else:
-                                q1_raw = q2_raw = None
-                            q1 = _safe_float_or_none(q1_raw); q2 = _safe_float_or_none(q2_raw)
-                            buckets_out = {"T1": q1, "T2": q2}
-                            def cat_global(v):
-                                if v is None or q1 is None: return "no-data"
-                                if v <= q1: return "T1"
-                                if v <= q2: return "T2"
-                                return "T3"
-                            for r in prov_vals.itertuples(index=False):
-                                v = _safe_float_or_none(getattr(r, "value", None))
-                                island_raw = getattr(r, "island", None)
-                                island_key = _isl_key_emit(island_raw)
-                                data_out.append({
-                                    "province": getattr(r, "province", None),
-                                    "value": v,
-                                    "category": cat_global(v),
-                                    "island": getattr(r, "island", None),
-                                    "n_cities": int(getattr(r, "n_cities", 0) or 0),
-                                    "island_mean": island_means.get(island_key),
-                                    "national_mean": national_mean
-                                })
-
-                        # build table rows (per-city) when include_table true
-                        table_rows = []
-                        if include_table:
-                            raw_entries = pre.get("raw_entries") or pre.get("data") or None
-                            if raw_entries and isinstance(raw_entries, list) and len(raw_entries):
-                                df_r = pd.DataFrame(raw_entries)
-                                # normalize column names
-                                df_r.columns = [str(c).strip() for c in df_r.columns]
-                                colmap = {c: c.lower() for c in df_r.columns}
-                                df_r.rename(columns=colmap, inplace=True)
-                                # find relevant columns
-                                def find_col(df, candidates):
-                                    for cand in candidates:
-                                        if cand in df.columns:
-                                            return cand
-                                    return None
-                                entity_col = find_col(df_r, ['entity', 'city', 'kota', 'name'])
-                                value_col = find_col(df_r, ['value', 'harga', 'price', 'val'])
-                                province_col = find_col(df_r, ['province', 'provinsi', 'prov', 'province_name'])
-                                date_col = find_col(df_r, ['date', 'tanggal', 'ts', 'datetime'])
-
-                                if entity_col:
-                                    df_r['entity'] = df_r[entity_col].astype(str)
-                                else:
-                                    df_r['entity'] = df_r.index.map(lambda i: f"city_{i}")
-
-                                if value_col:
-                                    df_r['value'] = pd.to_numeric(df_r[value_col], errors='coerce')
-                                else:
-                                    df_r['value'] = pd.NA
-
-                                if province_col:
-                                    df_r['province'] = df_r[province_col].astype(str)
-                                else:
-                                    df_r['province'] = pd.NA
-
-                                if date_col:
-                                    df_r['date'] = pd.to_datetime(df_r[date_col], errors='coerce')
-                                else:
-                                    df_r['date'] = pd.NaT
-
-
-                                df_r_filtered = df_r.copy()
-                                # only filter if date column exists
-                                if 'date' in df_r_filtered.columns and not df_r_filtered['date'].isna().all():
-                                    # keep only rows with valid date
-                                    df_r_filtered = df_r_filtered[df_r_filtered['date'].notna()].copy()
-                                    if year is not None:
-                                        df_r_filtered = df_r_filtered[df_r_filtered['date'].dt.year == int(year)]
-                                    if month is not None:
-                                        df_r_filtered = df_r_filtered[df_r_filtered['date'].dt.month == int(month)]
-                                    if week is not None and month is not None:
-                                        df_r_filtered['week_in_month'] = df_r_filtered['date'].apply(_week_of_month_int)
-                                        df_r_filtered = df_r_filtered[df_r_filtered['week_in_month'] == int(week)]
-                                else:
-                                    # no date column: choose conservative option = show empty table for requested-period table
-                                    df_r_filtered = df_r_filtered.iloc[0:0]
-
-                                  # if nothing after filtering -> empty table_rows
-                                if df_r_filtered.empty:
-                                    table_rows = []    
-                                else:
-
-                                    agg_df = df_r.groupby('entity').agg(
-                                        min_value=('value', 'min'),
-                                        max_value=('value', 'max'),
-                                        mean_value=('value', 'mean'),
-                                        count=('value', 'count')
-                                    ).reset_index().rename(columns={'entity': 'city'})
-
-                                    if 'date' in df_r.columns and not df_r['date'].isna().all():
-                                        min_dates = df_r.groupby('entity')['date'].min().reset_index().rename(columns={'entity': 'city', 'date': 'min_date'})
-                                        max_dates = df_r.groupby('entity')['date'].max().reset_index().rename(columns={'entity': 'city', 'date': 'max_date'})
-                                        agg_df = agg_df.merge(min_dates, on='city', how='left').merge(max_dates, on='city', how='left')
-
-                                    if 'province' in df_r.columns and df_r['province'].notna().any():
-                                        prov_map = df_r[['entity', 'province']].drop_duplicates('entity').rename(columns={'entity': 'city'})
-                                        agg_df = agg_df.merge(prov_map, on='city', how='left')
-                                    def _isl_key_local(k):
-                                        if k is None: return "unknown"
-                                        if isinstance(k, float) and pd.isna(k): return "unknown"
-                                        s = str(k).strip()
-                                        return s if s else "unknown"
-                                    for r in agg_df.itertuples(index=False):
-                                        province_val = getattr(r, 'province', None)
-                                        island_val = None
-                                        if province_val and PROVINCE_TO_ISLAND:
-                                            pkey = str(province_val).strip()
-                                            island_val = PROVINCE_TO_ISLAND.get(pkey)
-                                            if island_val is None:
-                                                for k, v in PROVINCE_TO_ISLAND.items():
-                                                    if str(k).strip().casefold() == pkey.casefold():
-                                                        island_val = v
-                                                        break
-                                        island_key = _isl_key_local(island_val)
-                                        table_rows.append({
-                                        "city": getattr(r, "city", None),
-                                        "province": province_val if pd.notna(province_val) else None,
-                                        "island": island_val,
-                                        "min": _safe_float_or_none(getattr(r, "min_value", None)),
-                                        "min_date": (getattr(r, "min_date").date().isoformat() if getattr(r, "min_date", None) is not pd.NaT and getattr(r, "min_date", None) is not None else None),
-                                        "max": _safe_float_or_none(getattr(r, "max_value", None)),
-                                        "max_date": (getattr(r, "max_date").date().isoformat() if getattr(r, "max_date", None) is not pd.NaT and getattr(r, "max_date", None) is not None else None),
-                                        "mean": _safe_float_or_none(getattr(r, "mean_value", None)),
-                                        "count": int(getattr(r, "count", 0) or 0),
-                                        "island_mean": island_means.get(island_key),
-                                        "rata_ratanasional": rata_ratanasional,
-                                        "national_mean": national_mean
-                                        
-                                    })
-                            else:
-                                table_rows = []
-
-                        # final response for predicted mode
-                        resp = {
-                            "mode": "predicted",
-                            "year": year,
-                            "month": month,
-                            "week": week,
-                            "generated_at": pre.get("generated_at"),
-                            "model_version": pre.get("model_version"),
-                            "agg": "precomputed (province-aggregated-from-city-means)",
-                            "bucket_scope": bucket_scope,
-                            "buckets": buckets_out,
-                            "data": data_out,
-                            "count" : len(table_rows),
-                            "table": table_rows,
-                            "rata_ratanasional": rata_ratanasional,
-
-                        }
-                        return jsonify(_sanitize_for_json(resp))
-
-
-        
-        df = LONG_DF[["entity","date","value"]].copy()
-        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
+        # =========================================================
+        # ======================= ACTUAL ==========================
+        # =========================================================
+        df = LONG_DF[["entity", "date", "value"]].copy()
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df[df["date"].dt.year == year]
+
         if month:
             df = df[df["date"].dt.month == month]
+
         if week and month:
-            df["week_in_month"] = df["date"].apply(_week_of_month_int)
-            df = df[df["week_in_month"] == week]
+            df["week"] = df["date"].apply(_week_of_month_int)
+            df = df[df["week"] == week]
 
         if df.empty:
-            return jsonify({"mode":"actual","year":year,"month":month,"week":week,"buckets":None,"data":[],"table":[], "last_actual": (str(LONG_DF["date"].max().date()) if not LONG_DF.empty else None)})
+            return jsonify({"data": [], "buckets": None})
 
-        df["province"] = df["entity"].map(ENTITY_TO_PROVINCE)
-        df = df.dropna(subset=["province"]).copy()
-        df["island"] = df["province"].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
+        # =====================
+        # AGREGASI PER KOTA
+        # =====================
+        city_stats = (
+            df.groupby("entity")
+              .agg(
+                  mean_val=("value", "mean"),
+                  cnt=("value", "count"),
+              )
+              .reset_index()
+              .rename(columns={"entity": "city"})
+        )
 
-        if island and island.lower() != "semua pulau":
-            df = df[df["island"].astype(str).str.lower() == island.strip().lower()]
-        if df.empty:
-            return jsonify({"mode":"actual","year":year,"month":month,"week":week,"buckets":None,"data":[],"table":[], "last_actual": (str(LONG_DF["date"].max().date()) if not LONG_DF.empty else None)})
-
-        # city stats (for table)
-        city_stats = df.groupby("entity").agg(mean_val=("value","mean"), min_val=("value","min"), max_val=("value","max"), cnt=("value","count")).reset_index().rename(columns={"entity":"city"})
-        # attach dates
-        min_dates = df.groupby("entity")["date"].min().reset_index().rename(columns={"entity":"city","date":"min_date"})
-        max_dates = df.groupby("entity")["date"].max().reset_index().rename(columns={"entity":"city","date":"max_date"})
-        city_stats = city_stats.merge(min_dates, on="city", how="left").merge(max_dates, on="city", how="left")
-        city_stats["province"] = city_stats["city"].map(ENTITY_TO_PROVINCE)
-        city_stats["island"] = city_stats["province"].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
-
-        # province values computed as mean(city_means)
-        prov_vals = city_stats.groupby("province").agg(value=("mean_val","mean"), n_cities=("city","nunique")).reset_index()
-        prov_vals["island"] = prov_vals["province"].str.upper().map(PROVINCE_TO_ISLAND)
-        prov_vals["value"] = prov_vals["value"].apply(_safe_float_or_none)
-
-
-        def _isl_key_emit(k):
-            if k is None: return "unknown"
-            if isinstance(k, float) and pd.isna(k): return "unknown"
-            s = str(k).strip()
-            return s if s else "unknown"
-
-        island_means_series = prov_vals.groupby("island", dropna=False)["value"].mean()
-        island_means = { _isl_key_emit(k): _safe_float_or_none(v) for k,v in island_means_series.items() }
-        vals_all = [v for v in prov_vals["value"].tolist() if v is not None]
-        national_mean = _safe_float_or_none(np.mean(vals_all) if vals_all else None)
-        # national mean = rata2 dari semua city means (lebih tepat)
-        city_vals = [ _safe_float_or_none(v) for v in city_stats["mean_val"].tolist() if v is not None ]
-        rata_ratanasional = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
-
-        data_out = []
-        buckets_out = None
-
-        if bucket_scope == "island":
-            buckets_out = {}
-            for isl_name, group in prov_vals.groupby("island"):
-                island_key = _isl_key_emit(isl_name)   
-                key = _isl_key_emit(isl_name)
-                vals = [v for v in group["value"].tolist() if v is not None]
-                if not vals:
-                    buckets_out[island_key] = {"T1": None, "T2": None}
-                    continue
-                try:
-                    q1_raw, q2_raw = np.quantile(np.array(vals), [1/3, 2/3])
-                except Exception:
-                    q1_raw = q2_raw = None
-                q1 = _safe_float_or_none(q1_raw)
-                q2 = _safe_float_or_none(q2_raw)
-                buckets_out[island_key] = {"T1": q1, "T2": q2}
-                def cat_local(v):
-                    if v is None or q1 is None: return "no-data"
-                    if v <= q1: return "T1"
-                    if v <= q2: return "T2"
-                    return "T3"
-                for r in group.itertuples(index=False):
-                    v = _safe_float_or_none(getattr(r, "value", None))
-                    data_out.append({"province": getattr(r, "province", None), 
-                                     "value": v, 
-                                     "category": cat_local(v),
-                                       "n_cities": int(getattr(r, "n_cities", 0) or 0),
-                                         "island": island_key,
-                                         "island_mean": island_means.get(island_key),
-                                            "national_mean": national_mean})
+        # =====================
+        # TERTIL (CITY BASED)
+        # =====================
+        city_vals = city_stats["mean_val"].dropna().tolist()
+        if city_vals:
+            q1, q2 = np.quantile(city_vals, [1/3, 2/3])
         else:
-            vals = [v for v in prov_vals["value"].tolist() if v is not None]
-            if vals:
-                try:
-                    q1_raw, q2_raw = np.quantile(np.array(vals), [1/3, 2/3])
-                except Exception:
-                    q1_raw = q2_raw = None
-            else:
-                q1_raw = q2_raw = None
-            t1 = _safe_float_or_none(q1_raw)
-            t2 = _safe_float_or_none(q2_raw)
-            buckets_out = {"T1": t1, "T2": t2}
-            def cat_global(v):
-                if v is None or t1 is None: return "no-data"
-                if v <= t1: return "T1"
-                if v <= t2: return "T2"
-                return "T3"
-            for r in prov_vals.itertuples(index=False):
-                v = _safe_float_or_none(getattr(r, "value", None))
-                island_key = _isl_key_emit(getattr(r, "island", None))
-                data_out.append({
-                    "province": getattr(r, "province", None),
-                    "value": v,
-                    "category": cat_global(v),
-                    "n_cities": int(getattr(r, "n_cities", 0) or 0),
-                    "island": island_key,
-                    "island_mean": island_means.get(island_key),
-                    "national_mean": national_mean
-                })
+            q1 = q2 = None
 
-        last_actual = (str(LONG_DF["date"].max().date()) if not LONG_DF.empty else None)
+        def cat_city(v):
+            if v is None or q1 is None:
+                return "no-data"
+            if q1 == q2:
+                return "T2"
+            if v <= q1:
+                return "T1"
+            if v <= q2:
+                return "T2"
+            return "T3"
 
-        table_rows = []
-        if include_table:
-            for r in city_stats.itertuples(index=False):
-                table_rows.append({
-                    "city": getattr(r, "city", None),
-                    "province": getattr(r, "province", None),
-                    "island": getattr(r, "island", None),
-                    "mean": _safe_float_or_none(getattr(r, "mean_val", None)),
-                    "min": _safe_float_or_none(getattr(r, "min_val", None)),
-                    "max": _safe_float_or_none(getattr(r, "max_val", None)),
-                    "min_date": (getattr(r,"min_date").date().isoformat() if getattr(r,"min_date",None) is not pd.NaT and getattr(r,"min_date",None) is not None else None),
-                    "max_date": (getattr(r,"max_date").date().isoformat() if getattr(r,"max_date",None) is not pd.NaT and getattr(r,"max_date",None) is not None else None),
-                    "count": int(getattr(r, "cnt", 0) or 0),
-                      "island_mean": island_means.get(island_key),
-                    "national_mean": national_mean
+        # =====================
+        # MERGE LAT-LONG
+        # =====================
+        data_out = []
+        for r in city_stats.itertuples(index=False):
+            key = _slugify_city(r.city)
+            coord = CITY_COORDS.get(key)
+            if not coord:
+                continue
 
-                })
+            val = float(r.mean_val) if pd.notna(r.mean_val) else None
+            data_out.append({
+                "city": r.city,
+                "value": val,
+                "category": cat_city(val),
+                "lat": coord["lat"],
+                "lng": coord["lng"],
+                "count": int(r.cnt),
+            })
 
-        resp = {
+        return jsonify({
             "mode": "actual",
-            "agg": "city_mean_then_province_mean",
-            "period": {"year": year, "month": month, "week": week},
-            "bucket_scope": bucket_scope,
-            "last_actual": last_actual,
-            "buckets": buckets_out,
+            "bucket_scope": "city",
+            "buckets": {
+                "T1": float(q1) if q1 is not None else None,
+                "T2": float(q2) if q2 is not None else None,
+            },
+            "rata_ratanasional": float(np.mean(city_vals)) if city_vals else None,
             "data": data_out,
-            "table": table_rows,
-            "rata_ratanasional": rata_ratanasional,
+        })
 
-        }
-        probs = _find_non_json_numbers(resp)
-        if probs:
-            app.logger.warning("choropleth: found non-JSON-safe numeric values: %s", probs[:20])
-
-        # sanitize seluruh response (NaN/np.nan -> None, numpy scalars -> py types)
-        safe_resp = _sanitize_for_json(resp)
-        return jsonify(safe_resp)
     except Exception as e:
-        app.logger.exception("api_choropleth unexpected error")
-        return jsonify({"error": "Gagal memproses choropleth", "detail": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 # static geojson serving helper (optional)
 @app.route('/static/geo/<path:filename>')
@@ -2903,530 +2383,530 @@ def normalizes_city_name(name: str) -> str:
 
 # Terapkan ke semua nama di page_cities
 
-@app.route("/api/region_summary")
-def api_region_summary():
+# @app.route("/api/region_summary")
+# def api_region_summary():
     
-    mode  = (request.args.get("mode") or "island").strip().lower()
-    value = (request.args.get("value") or "").strip()
-    predict = str(request.args.get("predict") or "0").strip()
-    naive_fallback = str(request.args.get("naive_fallback") or "0").strip()
-    try:
-        horizon = int(request.args.get("horizon") or 30)
-    except:
-        return jsonify({"error":"horizon harus integer (jumlah hari)"}), 400
-    model_mode = (request.args.get("model_mode") or "test").strip()
+#     mode  = (request.args.get("mode") or "island").strip().lower()
+#     value = (request.args.get("value") or "").strip()
+#     predict = str(request.args.get("predict") or "0").strip()
+#     naive_fallback = str(request.args.get("naive_fallback") or "0").strip()
+#     try:
+#         horizon = int(request.args.get("horizon") or 30)
+#     except:
+#         return jsonify({"error":"horizon harus integer (jumlah hari)"}), 400
+#     model_mode = (request.args.get("model_mode") or "test").strip()
 
-    # parse optional date filters
-    year_q  = request.args.get("year", "").strip()
-    month_q = request.args.get("month", "").strip()
-    week_q  = request.args.get("week", "").strip()
-    try:
-        year  = int(year_q)  if year_q  else None
-        month = int(month_q) if month_q else None
-        week  = int(week_q)  if week_q  else None
-    except:
-        return jsonify({"error":"format year/month/week tidak valid"}), 400
+#     # parse optional date filters
+#     year_q  = request.args.get("year", "").strip()
+#     month_q = request.args.get("month", "").strip()
+#     week_q  = request.args.get("week", "").strip()
+#     try:
+#         year  = int(year_q)  if year_q  else None
+#         month = int(month_q) if month_q else None
+#         week  = int(week_q)  if week_q  else None
+#     except:
+#         return jsonify({"error":"format year/month/week tidak valid"}), 400
 
-    if mode not in ("island","province"):
-        return jsonify({"error":"mode harus 'island' atau 'province'"}), 400
-    if not value:
-        return jsonify({"error":"parameter 'value' wajib"}), 400
+#     if mode not in ("island","province"):
+#         return jsonify({"error":"mode harus 'island' atau 'province'"}), 400
+#     if not value:
+#         return jsonify({"error":"parameter 'value' wajib"}), 400
 
-    do_predict = predict in ("1","true","yes")
-    naive_fallback = naive_fallback in ("1","true","yes")
-    # init containers early
-    results = {}
-    errors = {}
-    if horizon <= 0 or horizon > RC_PRED_HORIZON_LIMIT:
-            return jsonify({"error": f"horizon harus antara 1 dan {RC_PRED_HORIZON_LIMIT} hari"}), 400
+#     do_predict = predict in ("1","true","yes")
+#     naive_fallback = naive_fallback in ("1","true","yes")
+#     # init containers early
+#     results = {}
+#     errors = {}
+#     if horizon <= 0 or horizon > RC_PRED_HORIZON_LIMIT:
+#             return jsonify({"error": f"horizon harus antara 1 dan {RC_PRED_HORIZON_LIMIT} hari"}), 400
 
-    try:
-        page = int(request.args.get("page") or 1)
-        page_size = int(request.args.get("page_size") or 50)
-    except:
-        return jsonify({"error":"page & page_size harus integer"}), 400
-    if page < 1: page = 1
-    page_size = max(1, min(page_size, 200))
+#     try:
+#         page = int(request.args.get("page") or 1)
+#         page_size = int(request.args.get("page_size") or 50)
+#     except:
+#         return jsonify({"error":"page & page_size harus integer"}), 400
+#     if page < 1: page = 1
+#     page_size = max(1, min(page_size, 200))
 
-    # load dataframe
-    df = LONG_DF[["entity","date","value"]].copy()
-    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
-    df = df.dropna(subset=["entity","date","value"])
-    df["province"] = df["entity"].map(ENTITY_TO_PROVINCE)
-    df = df.dropna(subset=["province"])
-    df["island"] = df["province"].str.upper().map(PROVINCE_TO_ISLAND)
-    df["city"] = df["entity"]
+#     # load dataframe
+#     df = LONG_DF[["entity","date","value"]].copy()
+#     df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+#     df = df.dropna(subset=["entity","date","value"])
+#     df["province"] = df["entity"].map(ENTITY_TO_PROVINCE)
+#     df = df.dropna(subset=["province"])
+#     df["island"] = df["province"].str.upper().map(PROVINCE_TO_ISLAND)
+#     df["city"] = df["entity"]
 
-    # --- keep a full copy of the dataframe BEFORE applying year/month/week filters
-    full_df = df.copy()
+#     # --- keep a full copy of the dataframe BEFORE applying year/month/week filters
+#     full_df = df.copy()
 
-    # apply year/month/week filters to df (not full_df)
-    if year is not None:
-        df = df[df["date"].dt.year == year]
-    if month is not None:
-        df = df[df["date"].dt.month == month]
-    if week is not None and month is not None:
-        df["week_in_month"] = df["date"].apply(_week_of_month_int)
-        df = df[df["week_in_month"] == week]
+#     # apply year/month/week filters to df (not full_df)
+#     if year is not None:
+#         df = df[df["date"].dt.year == year]
+#     if month is not None:
+#         df = df[df["date"].dt.month == month]
+#     if week is not None and month is not None:
+#         df["week_in_month"] = df["date"].apply(_week_of_month_int)
+#         df = df[df["week_in_month"] == week]
 
-    # select sub by island/province
-    if mode == "island":
-        if value.lower() == "semua pulau":
-            sub = df.copy()
-        else:
-            sub = df[df["island"].str.casefold() == value.casefold()].copy()
-    else:
-        sub = df[df["province"].str.casefold() == value.casefold()].copy()
+#     # select sub by island/province
+#     if mode == "island":
+#         if value.lower() == "semua pulau":
+#             sub = df.copy()
+#         else:
+#             sub = df[df["island"].str.casefold() == value.casefold()].copy()
+#     else:
+#         sub = df[df["province"].str.casefold() == value.casefold()].copy()
 
-    # if the filtered sub is empty, nothing to show
-    if sub.empty:
-        return jsonify({"mode": mode, "value": value, "count": 0, "rows": []})
+#     # if the filtered sub is empty, nothing to show
+#     if sub.empty:
+#         return jsonify({"mode": mode, "value": value, "count": 0, "rows": []})
 
-    # --- Normalisasi nama kota: buat city_key (untuk join/agg) dan city_display (untuk output) ---
-    def _make_city_key(s):
-        if not s or pd.isna(s):
-            return ""
-        s = str(s).strip().lower()
-        s = re.sub(r'[_\.\-]+', ' ', s)      # replace _ . - with space
-        s = re.sub(r'\s+', ' ', s).strip()   # collapse spaces
-        s = re.sub(r'^\bkab\s+', 'kabupaten ', s)  # kab -> kabupaten
-        return s
+#     # --- Normalisasi nama kota: buat city_key (untuk join/agg) dan city_display (untuk output) ---
+#     def _make_city_key(s):
+#         if not s or pd.isna(s):
+#             return ""
+#         s = str(s).strip().lower()
+#         s = re.sub(r'[_\.\-]+', ' ', s)      # replace _ . - with space
+#         s = re.sub(r'\s+', ' ', s).strip()   # collapse spaces
+#         s = re.sub(r'^\bkab\s+', 'kabupaten ', s)  # kab -> kabupaten
+#         return s
 
-    def _make_city_display_from_key(key):
-        if not key:
-            return ""
-        disp = " ".join([w.capitalize() for w in key.split()])
-        disp = re.sub(r'^\bKabupaten\s+', 'Kabupaten ', disp)
-        disp = re.sub(r'^\bKota\s+', 'Kota ', disp)
-        return disp
+#     def _make_city_display_from_key(key):
+#         if not key:
+#             return ""
+#         disp = " ".join([w.capitalize() for w in key.split()])
+#         disp = re.sub(r'^\bKabupaten\s+', 'Kabupaten ', disp)
+#         disp = re.sub(r'^\bKota\s+', 'Kota ', disp)
+#         return disp
 
-    # apply to sub and full_df (so future lookups are consistent)
-    sub['city_key'] = sub['city'].apply(_make_city_key)
-    sub['city_display'] = sub['city_key'].apply(_make_city_display_from_key)
-    full_df['city_key'] = full_df['city'].apply(_make_city_key)
+#     # apply to sub and full_df (so future lookups are consistent)
+#     sub['city_key'] = sub['city'].apply(_make_city_key)
+#     sub['city_display'] = sub['city_key'].apply(_make_city_display_from_key)
+#     full_df['city_key'] = full_df['city'].apply(_make_city_key)
 
-    # fallback: if city_display empty, use original cleaned title of city
-    sub.loc[sub['city_display'].str.strip() == "", 'city_display'] = (
-        sub.loc[sub['city_display'].str.strip() == "", 'city']
-            .astype(str).str.strip().str.title()
-    )
+#     # fallback: if city_display empty, use original cleaned title of city
+#     sub.loc[sub['city_display'].str.strip() == "", 'city_display'] = (
+#         sub.loc[sub['city_display'].str.strip() == "", 'city']
+#             .astype(str).str.strip().str.title()
+#     )
 
-    # --- build paged list using city_key and display map ---
-    city_key_list = sorted({ str(x).strip() for x in sub['city_key'].unique() if pd.notna(x) and str(x).strip() })
-    city_display_map = sub.drop_duplicates('city_key').set_index('city_key')['city_display'].to_dict()
-    total_cities = len(city_key_list)
+#     # --- build paged list using city_key and display map ---
+#     city_key_list = sorted({ str(x).strip() for x in sub['city_key'].unique() if pd.notna(x) and str(x).strip() })
+#     city_display_map = sub.drop_duplicates('city_key').set_index('city_key')['city_display'].to_dict()
+#     total_cities = len(city_key_list)
 
-    start = (page - 1) * page_size
-    end = start + page_size
-    page_city_keys = city_key_list[start:end] if start < total_cities else []
-    # page_cities (display names) - used in API output only
-    page_cities = [ city_display_map.get(k, k) for k in page_city_keys ]
+#     start = (page - 1) * page_size
+#     end = start + page_size
+#     page_city_keys = city_key_list[start:end] if start < total_cities else []
+#     # page_cities (display names) - used in API output only
+#     page_cities = [ city_display_map.get(k, k) for k in page_city_keys ]
 
-    # prepare time-based columns and monthly aggregation using city_key
-    sub["year"] = sub["date"].dt.year
-    sub["month"] = sub["date"].dt.month
-    monthly = sub.groupby(["city_key","year","month"])["value"].mean().reset_index(name="month_avg")
+#     # prepare time-based columns and monthly aggregation using city_key
+#     sub["year"] = sub["date"].dt.year
+#     sub["month"] = sub["date"].dt.month
+#     monthly = sub.groupby(["city_key","year","month"])["value"].mean().reset_index(name="month_avg")
 
-    # precompute min/max idx safely (by city_key)
-    try:
-        min_idx = sub.groupby("city_key")["value"].idxmin()
-        max_idx = sub.groupby("city_key")["value"].idxmax()
-    except Exception:
-        min_idx = {}
-        max_idx = {}
+#     # precompute min/max idx safely (by city_key)
+#     try:
+#         min_idx = sub.groupby("city_key")["value"].idxmin()
+#         max_idx = sub.groupby("city_key")["value"].idxmax()
+#     except Exception:
+#         min_idx = {}
+#         max_idx = {}
 
-    # city means computed FROM sub (sub already filtered by year/month/week)
-    try:
-        city_mean_df = sub.groupby("city_key", dropna=False).agg(mean_val=("value","mean")).reset_index()
-        # attach display
-        first_display = sub[['city_key','city_display']].drop_duplicates('city_key').set_index('city_key')
-        city_mean_df = city_mean_df.set_index('city_key').join(first_display, how='left').reset_index()
-        # keep column name 'city' for compatibility with older code paths (value is normalized key)
-        city_mean_df = city_mean_df.rename(columns={'city_key':'city'})
-        city_mean_df['city_display'] = city_mean_df['city_display'].fillna(city_mean_df['city'])
-    except Exception:
-        city_mean_df = pd.DataFrame(columns=['city','mean_val','city_display'])
+#     # city means computed FROM sub (sub already filtered by year/month/week)
+#     try:
+#         city_mean_df = sub.groupby("city_key", dropna=False).agg(mean_val=("value","mean")).reset_index()
+#         # attach display
+#         first_display = sub[['city_key','city_display']].drop_duplicates('city_key').set_index('city_key')
+#         city_mean_df = city_mean_df.set_index('city_key').join(first_display, how='left').reset_index()
+#         # keep column name 'city' for compatibility with older code paths (value is normalized key)
+#         city_mean_df = city_mean_df.rename(columns={'city_key':'city'})
+#         city_mean_df['city_display'] = city_mean_df['city_display'].fillna(city_mean_df['city'])
+#     except Exception:
+#         city_mean_df = pd.DataFrame(columns=['city','mean_val','city_display'])
 
-    # attach province/island for each city using first occurrence in sub (index by city_key)
-    try:
-        city_meta = sub[['city_key','province','island']].drop_duplicates('city_key').set_index('city_key')
-    except Exception:
-        city_meta = pd.DataFrame(columns=['province','island'])
+#     # attach province/island for each city using first occurrence in sub (index by city_key)
+#     try:
+#         city_meta = sub[['city_key','province','island']].drop_duplicates('city_key').set_index('city_key')
+#     except Exception:
+#         city_meta = pd.DataFrame(columns=['province','island'])
 
-    # merge meta with means (city_mean_df.city contains the normalized key)
-    if not city_mean_df.empty and not city_meta.empty:
-        city_mean_df = city_mean_df.set_index('city').join(city_meta, how='left').reset_index()
-    else:
-        if "province" not in city_mean_df.columns:
-            city_mean_df["province"] = None
-        if "island" not in city_mean_df.columns:
-            city_mean_df["island"] = None
+#     # merge meta with means (city_mean_df.city contains the normalized key)
+#     if not city_mean_df.empty and not city_meta.empty:
+#         city_mean_df = city_mean_df.set_index('city').join(city_meta, how='left').reset_index()
+#     else:
+#         if "province" not in city_mean_df.columns:
+#             city_mean_df["province"] = None
+#         if "island" not in city_mean_df.columns:
+#             city_mean_df["island"] = None
 
-    # safe maps keyed by normalized key (which we kept in 'city' column)
-    city_mean_map = { str(row['city']).strip(): _safe_float_or_none(row['mean_val']) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
-    city_prov_map = { str(row['city']).strip(): (str(row['province']).strip() if pd.notna(row.get('province')) else None) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
-    city_island_map = { str(row['city']).strip(): (str(row['island']).strip() if pd.notna(row.get('island')) else None) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
+#     # safe maps keyed by normalized key (which we kept in 'city' column)
+#     city_mean_map = { str(row['city']).strip(): _safe_float_or_none(row['mean_val']) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
+#     city_prov_map = { str(row['city']).strip(): (str(row['province']).strip() if pd.notna(row.get('province')) else None) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
+#     city_island_map = { str(row['city']).strip(): (str(row['island']).strip() if pd.notna(row.get('island')) else None) for _, row in city_mean_df.iterrows() if pd.notna(row['city']) }
 
-    # province-level aggregation (mean of city means) — used to compute island/national refs
-    if not city_mean_df.empty:
-        prov_vals = city_mean_df.groupby("province", dropna=False, as_index=False).agg(value=("mean_val","mean"), n_cities=("city","nunique")).reset_index()
-        prov_vals["value"] = prov_vals["value"].apply(_safe_float_or_none)
-        prov_vals["province"] = prov_vals["province"].apply(lambda x: None if pd.isna(x) else str(x).strip())
-        prov_vals["island"] = prov_vals["province"].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
-        # fill missing island from city_island_map if possible
-        for i, row in prov_vals.iterrows():
-            if not row.get("island"):
-                vals = city_mean_df.loc[city_mean_df["province"].astype(str).str.strip() == (row.get("province") or ""), "island"].dropna().unique()
-                prov_vals.at[i, "island"] = vals[0] if len(vals) else None
-    else:
-        prov_vals = pd.DataFrame(columns=["province","value","n_cities","island"])
+#     # province-level aggregation (mean of city means) — used to compute island/national refs
+#     if not city_mean_df.empty:
+#         prov_vals = city_mean_df.groupby("province", dropna=False, as_index=False).agg(value=("mean_val","mean"), n_cities=("city","nunique")).reset_index()
+#         prov_vals["value"] = prov_vals["value"].apply(_safe_float_or_none)
+#         prov_vals["province"] = prov_vals["province"].apply(lambda x: None if pd.isna(x) else str(x).strip())
+#         prov_vals["island"] = prov_vals["province"].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
+#         # fill missing island from city_island_map if possible
+#         for i, row in prov_vals.iterrows():
+#             if not row.get("island"):
+#                 vals = city_mean_df.loc[city_mean_df["province"].astype(str).str.strip() == (row.get("province") or ""), "island"].dropna().unique()
+#                 prov_vals.at[i, "island"] = vals[0] if len(vals) else None
+#     else:
+#         prov_vals = pd.DataFrame(columns=["province","value","n_cities","island"])
 
-    # compute island_means and national_mean
-    try:
-        island_means_series = prov_vals.groupby("island", dropna=False)["value"].mean()
-        island_means = { (k if (k is not None and not (isinstance(k,float) and pd.isna(k))) else "unknown"): _safe_float_or_none(v) for k,v in island_means_series.items() }
-    except Exception:
-        island_means = {}
+#     # compute island_means and national_mean
+#     try:
+#         island_means_series = prov_vals.groupby("island", dropna=False)["value"].mean()
+#         island_means = { (k if (k is not None and not (isinstance(k,float) and pd.isna(k))) else "unknown"): _safe_float_or_none(v) for k,v in island_means_series.items() }
+#     except Exception:
+#         island_means = {}
 
-    try:
-        city_vals = [ _safe_float_or_none(v) for v in city_mean_df["mean_val"].tolist() if v is not None ]
-        national_mean = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
-    except Exception:
-        national_mean = None
+#     try:
+#         city_vals = [ _safe_float_or_none(v) for v in city_mean_df["mean_val"].tolist() if v is not None ]
+#         national_mean = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
+#     except Exception:
+#         national_mean = None
 
-    # helper predict (unchanged)
-    def _get_pred_for_entity(entity, horizon_days, model_mode_local):
-        key = (entity, horizon_days, model_mode_local)
-        now = time.time()
-        cached = _RC_PRED_CACHE.get(key)
-        if cached and now - cached["ts"] < RC_PRED_CACHE_TTL:
-            return cached["preds"]
-        preds = _recursive_predict(entity, days=horizon_days, mode=model_mode_local)
-        normalized = []
-        for p in preds:
-            try:
-                normalized.append({"date": pd.to_datetime(p["date"]).normalize(), "pred": float(p["pred"])} )
-            except Exception:
-                pass
-        _RC_PRED_CACHE[key] = {"ts": now, "preds": normalized}
-        return normalized
+#     # helper predict (unchanged)
+#     def _get_pred_for_entity(entity, horizon_days, model_mode_local):
+#         key = (entity, horizon_days, model_mode_local)
+#         now = time.time()
+#         cached = _RC_PRED_CACHE.get(key)
+#         if cached and now - cached["ts"] < RC_PRED_CACHE_TTL:
+#             return cached["preds"]
+#         preds = _recursive_predict(entity, days=horizon_days, mode=model_mode_local)
+#         normalized = []
+#         for p in preds:
+#             try:
+#                 normalized.append({"date": pd.to_datetime(p["date"]).normalize(), "pred": float(p["pred"])} )
+#             except Exception:
+#                 pass
+#         _RC_PRED_CACHE[key] = {"ts": now, "preds": normalized}
+#         return normalized
 
-    # --- non-predict: build rows for this page slice ---
-    rows = []
-    if not do_predict:
-        for offset_idx, city_key in enumerate(page_city_keys, start=start+1):
-            try:
-                # filter by normalized key
-                g = sub[sub["city_key"].astype(str).str.strip() == city_key].sort_values("date")
-                if g.empty:
-                    app.logger.debug("city not found in sub df (key): %s", city_key)
-                    continue
+#     # --- non-predict: build rows for this page slice ---
+#     rows = []
+#     if not do_predict:
+#         for offset_idx, city_key in enumerate(page_city_keys, start=start+1):
+#             try:
+#                 # filter by normalized key
+#                 g = sub[sub["city_key"].astype(str).str.strip() == city_key].sort_values("date")
+#                 if g.empty:
+#                     app.logger.debug("city not found in sub df (key): %s", city_key)
+#                     continue
 
-                g_all = full_df[full_df["city_key"].astype(str).str.strip() == city_key].sort_values("date")
+#                 g_all = full_df[full_df["city_key"].astype(str).str.strip() == city_key].sort_values("date")
 
-                # compute min/max and monthly stats based on g
-                min_value = min_date = max_value = max_date = None
-                try:
-                    idx_min_local = g["value"].idxmin()
-                    minr = g.loc[idx_min_local]
-                    min_value = float(minr["value"]); min_date = minr["date"].date().isoformat()
-                except Exception:
-                    min_value = min_date = None
+#                 # compute min/max and monthly stats based on g
+#                 min_value = min_date = max_value = max_date = None
+#                 try:
+#                     idx_min_local = g["value"].idxmin()
+#                     minr = g.loc[idx_min_local]
+#                     min_value = float(minr["value"]); min_date = minr["date"].date().isoformat()
+#                 except Exception:
+#                     min_value = min_date = None
 
-                try:
-                    idx_max_local = g["value"].idxmax()
-                    maxr = g.loc[idx_max_local]
-                    max_value = float(maxr["value"]); max_date = maxr["date"].date().isoformat()
-                except Exception:
-                    max_value = max_date = None
+#                 try:
+#                     idx_max_local = g["value"].idxmax()
+#                     maxr = g.loc[idx_max_local]
+#                     max_value = float(maxr["value"]); max_date = maxr["date"].date().isoformat()
+#                 except Exception:
+#                     max_value = max_date = None
 
-                mm_local = pd.DataFrame()
-                try:
-                    mm_local = g.groupby([g["date"].dt.year.rename("year"), g["date"].dt.month.rename("month")])["value"].mean().reset_index(name="month_avg")
-                except Exception:
-                    mm_local = pd.DataFrame()
+#                 mm_local = pd.DataFrame()
+#                 try:
+#                     mm_local = g.groupby([g["date"].dt.year.rename("year"), g["date"].dt.month.rename("month")])["value"].mean().reset_index(name="month_avg")
+#                 except Exception:
+#                     mm_local = pd.DataFrame()
 
-                if not mm_local.empty:
-                    try:
-                        idxh = mm_local["month_avg"].idxmax()
-                        idxl = mm_local["month_avg"].idxmin()
-                        high_row = mm_local.loc[idxh]; low_row = mm_local.loc[idxl]
-                        avg_month_high = float(high_row["month_avg"])
-                        avg_month_high_month = int(high_row["month"])
-                        avg_month_high_year = int(high_row["year"])
-                        avg_month_low  = float(low_row["month_avg"])
-                        avg_month_low_month = int(low_row["month"])
-                        avg_month_low_year  = int(low_row["year"])
-                    except Exception:
-                        avg_month_high = avg_month_high_month = avg_month_high_year = None
-                        avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
-                else:
-                    avg_month_high = avg_month_high_month = avg_month_high_year = None
-                    avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
+#                 if not mm_local.empty:
+#                     try:
+#                         idxh = mm_local["month_avg"].idxmax()
+#                         idxl = mm_local["month_avg"].idxmin()
+#                         high_row = mm_local.loc[idxh]; low_row = mm_local.loc[idxl]
+#                         avg_month_high = float(high_row["month_avg"])
+#                         avg_month_high_month = int(high_row["month"])
+#                         avg_month_high_year = int(high_row["year"])
+#                         avg_month_low  = float(low_row["month_avg"])
+#                         avg_month_low_month = int(low_row["month"])
+#                         avg_month_low_year  = int(low_row["year"])
+#                     except Exception:
+#                         avg_month_high = avg_month_high_month = avg_month_high_year = None
+#                         avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
+#                 else:
+#                     avg_month_high = avg_month_high_month = avg_month_high_year = None
+#                     avg_month_low  = avg_month_low_month  = avg_month_low_year  = None
 
-                # display name and maps
-                city_display = city_display_map.get(city_key, city_key)
-                mean_val = city_mean_map.get(city_key) if city_key in city_mean_map else (float(g["value"].mean()) if not g["value"].isna().all() else None)
-                prov_val = g["province"].iloc[0] if "province" in g.columns and not g["province"].isna().all() else city_prov_map.get(city_key)
-                isl_val = g["island"].iloc[0] if "island" in g.columns and not g["island"].isna().all() else city_island_map.get(city_key)
-                island_key = (isl_val or "unknown")
+#                 # display name and maps
+#                 city_display = city_display_map.get(city_key, city_key)
+#                 mean_val = city_mean_map.get(city_key) if city_key in city_mean_map else (float(g["value"].mean()) if not g["value"].isna().all() else None)
+#                 prov_val = g["province"].iloc[0] if "province" in g.columns and not g["province"].isna().all() else city_prov_map.get(city_key)
+#                 isl_val = g["island"].iloc[0] if "island" in g.columns and not g["island"].isna().all() else city_island_map.get(city_key)
+#                 island_key = (isl_val or "unknown")
 
-                rows.append({
-                    "no": offset_idx,
-                    "city": city_display,
-                    "province": prov_val,
-                    "island": island_key,
-                    "min": _safe_float_or_none(min_value),
-                    "min_date": min_date,
-                    "max": _safe_float_or_none(max_value),
-                    "max_date": max_date,
-                    "mean": _safe_float_or_none(mean_val),
-                    "count": int(g["value"].count() if "value" in g.columns else 0),
-                    "avg_month_high": avg_month_high,
-                    "avg_month_high_month": avg_month_high_month,
-                    "avg_month_high_year": avg_month_high_year,
-                    "avg_month_low": avg_month_low,
-                    "avg_month_low_month": avg_month_low_month,
-                    "avg_month_low_year": avg_month_low_year,
-                    "island_mean": island_means.get(isl_val if isl_val else "unknown"),
-                    "national_mean": national_mean
-                })
-            except Exception as e:
-                app.logger.exception("failed building non-predict row for city_key %s: %s", city_key, e)
-                continue
+#                 rows.append({
+#                     "no": offset_idx,
+#                     "city": city_display,
+#                     "province": prov_val,
+#                     "island": island_key,
+#                     "min": _safe_float_or_none(min_value),
+#                     "min_date": min_date,
+#                     "max": _safe_float_or_none(max_value),
+#                     "max_date": max_date,
+#                     "mean": _safe_float_or_none(mean_val),
+#                     "count": int(g["value"].count() if "value" in g.columns else 0),
+#                     "avg_month_high": avg_month_high,
+#                     "avg_month_high_month": avg_month_high_month,
+#                     "avg_month_high_year": avg_month_high_year,
+#                     "avg_month_low": avg_month_low,
+#                     "avg_month_low_month": avg_month_low_month,
+#                     "avg_month_low_year": avg_month_low_year,
+#                     "island_mean": island_means.get(isl_val if isl_val else "unknown"),
+#                     "national_mean": national_mean
+#                 })
+#             except Exception as e:
+#                 app.logger.exception("failed building non-predict row for city_key %s: %s", city_key, e)
+#                 continue
 
-        safe_rows = [_sanitize_for_json(r) for r in rows]
-        return jsonify({
-            "mode": mode,
-            "value": value,
-            "count": int(total_cities),
-            "page": int(page),
-            "page_size": int(page_size),
-            "rows": safe_rows,
-            "predict": False
-        })
+#         safe_rows = [_sanitize_for_json(r) for r in rows]
+#         return jsonify({
+#             "mode": mode,
+#             "value": value,
+#             "count": int(total_cities),
+#             "page": int(page),
+#             "page_size": int(page_size),
+#             "rows": safe_rows,
+#             "predict": False
+#         })
 
 
 
-    if do_predict:
-            try:
-                # try load precomputed (this function already handles month/week None)
-                pre = _load_precomputed_choropleth(year=year or full_df["date"].dt.year.max(), month=month, week=week, island=None)
-            except Exception as _e:
-                pre = None
+#     if do_predict:
+#             try:
+#                 # try load precomputed (this function already handles month/week None)
+#                 pre = _load_precomputed_choropleth(year=year or full_df["date"].dt.year.max(), month=month, week=week, island=None)
+#             except Exception as _e:
+#                 pre = None
 
-            if pre is not None:
-                # precomputed available: build table rows for the requested province page slice
-                # pre contains "raw_entries" (per-city rows) or "data" depending on file structure
-                raw_entries = pre.get("raw_entries") or pre.get("data") or []
-                # normalize into DataFrame for robust filtering/agg
-                if isinstance(raw_entries, list) and len(raw_entries):
-                    df_r = pd.DataFrame(raw_entries)
-                    # normalize column names (keep original casing trimmed)
-                    df_r.columns = [str(c).strip() for c in df_r.columns]
-                    colmap = {c: c.lower() for c in df_r.columns}
-                    df_r.rename(columns=colmap, inplace=True)
+#             if pre is not None:
+#                 # precomputed available: build table rows for the requested province page slice
+#                 # pre contains "raw_entries" (per-city rows) or "data" depending on file structure
+#                 raw_entries = pre.get("raw_entries") or pre.get("data") or []
+#                 # normalize into DataFrame for robust filtering/agg
+#                 if isinstance(raw_entries, list) and len(raw_entries):
+#                     df_r = pd.DataFrame(raw_entries)
+#                     # normalize column names (keep original casing trimmed)
+#                     df_r.columns = [str(c).strip() for c in df_r.columns]
+#                     colmap = {c: c.lower() for c in df_r.columns}
+#                     df_r.rename(columns=colmap, inplace=True)
 
-                    # Ensure period fields lowercased are preserved (period_year/month/week)
-                    # find likely columns
-                    def find_col(df, candidates):
-                        for cand in candidates:
-                            if cand in df.columns:
-                                return cand
-                        return None
+#                     # Ensure period fields lowercased are preserved (period_year/month/week)
+#                     # find likely columns
+#                     def find_col(df, candidates):
+#                         for cand in candidates:
+#                             if cand in df.columns:
+#                                 return cand
+#                         return None
 
-                    entity_col = find_col(df_r, ['entity','city','kota','name'])
-                    value_col  = find_col(df_r, ['value','harga','price','val'])
-                    prov_col   = find_col(df_r, ['province','provinsi','prov','province_name'])
-                    date_col   = find_col(df_r, ['date','tanggal','ts','datetime'])
+#                     entity_col = find_col(df_r, ['entity','city','kota','name'])
+#                     value_col  = find_col(df_r, ['value','harga','price','val'])
+#                     prov_col   = find_col(df_r, ['province','provinsi','prov','province_name'])
+#                     date_col   = find_col(df_r, ['date','tanggal','ts','datetime'])
 
-                    if entity_col:
-                        df_r['entity'] = df_r[entity_col].astype(str)
-                    else:
-                        df_r['entity'] = df_r.index.map(lambda i: f"city_{i}")
+#                     if entity_col:
+#                         df_r['entity'] = df_r[entity_col].astype(str)
+#                     else:
+#                         df_r['entity'] = df_r.index.map(lambda i: f"city_{i}")
 
-                    if value_col:
-                        df_r['value'] = pd.to_numeric(df_r[value_col], errors='coerce')
-                    else:
-                        df_r['value'] = pd.NA
+#                     if value_col:
+#                         df_r['value'] = pd.to_numeric(df_r[value_col], errors='coerce')
+#                     else:
+#                         df_r['value'] = pd.NA
 
-                    if prov_col:
-                        df_r['province'] = df_r[prov_col].astype(str)
-                    else:
-                        df_r['province'] = pd.NA
+#                     if prov_col:
+#                         df_r['province'] = df_r[prov_col].astype(str)
+#                     else:
+#                         df_r['province'] = pd.NA
 
-                    # If date column missing, try to build from period_* fields if available
-                    if date_col:
-                        df_r['date'] = pd.to_datetime(df_r[date_col], errors='coerce')
-                    else:
-                        # try construct a representative date if possible from period_year/period_month/period_week
-                        def _build_date_from_period(row):
-                            try:
-                                py = int(row.get('period_year') or row.get('year') or year)
-                            except Exception:
-                                return pd.NaT
-                            pm = row.get('period_month') or row.get('month') or None
-                            pw = row.get('period_week') or row.get('week') or None
-                            try:
-                                pm = int(pm) if pm not in (None, '') else None
-                            except Exception:
-                                pm = None
-                            try:
-                                pw = int(pw) if pw not in (None, '') else None
-                            except Exception:
-                                pw = None
-                            if pw is not None and pm is not None:
-                                day = min(1 + (pw - 1) * 7, 28)
-                                return pd.to_datetime(f"{py:04d}-{pm:02d}-{day:02d}", errors='coerce')
-                            elif pm is not None:
-                                return pd.to_datetime(f"{py:04d}-{pm:02d}-01", errors='coerce')
-                            else:
-                                return pd.to_datetime(f"{py:04d}-01-01", errors='coerce')
-                        df_r['date'] = df_r.apply(_build_date_from_period, axis=1)
+#                     # If date column missing, try to build from period_* fields if available
+#                     if date_col:
+#                         df_r['date'] = pd.to_datetime(df_r[date_col], errors='coerce')
+#                     else:
+#                         # try construct a representative date if possible from period_year/period_month/period_week
+#                         def _build_date_from_period(row):
+#                             try:
+#                                 py = int(row.get('period_year') or row.get('year') or year)
+#                             except Exception:
+#                                 return pd.NaT
+#                             pm = row.get('period_month') or row.get('month') or None
+#                             pw = row.get('period_week') or row.get('week') or None
+#                             try:
+#                                 pm = int(pm) if pm not in (None, '') else None
+#                             except Exception:
+#                                 pm = None
+#                             try:
+#                                 pw = int(pw) if pw not in (None, '') else None
+#                             except Exception:
+#                                 pw = None
+#                             if pw is not None and pm is not None:
+#                                 day = min(1 + (pw - 1) * 7, 28)
+#                                 return pd.to_datetime(f"{py:04d}-{pm:02d}-{day:02d}", errors='coerce')
+#                             elif pm is not None:
+#                                 return pd.to_datetime(f"{py:04d}-{pm:02d}-01", errors='coerce')
+#                             else:
+#                                 return pd.to_datetime(f"{py:04d}-01-01", errors='coerce')
+#                         df_r['date'] = df_r.apply(_build_date_from_period, axis=1)
 
-                    # optionally apply the same year/month/week filtering as earlier
-                    df_filtered = df_r
-                    if 'date' in df_filtered.columns and not df_filtered['date'].isna().all():
-                        if year is not None:
-                            df_filtered = df_filtered[df_filtered['date'].dt.year == int(year)]
-                        if month is not None:
-                            df_filtered = df_filtered[df_filtered['date'].dt.month == int(month)]
-                        if week is not None and month is not None:
-                            df_filtered['week_in_month'] = df_filtered['date'].apply(_week_of_month_int)
-                            df_filtered = df_filtered[df_filtered['week_in_month'] == int(week)]
+#                     # optionally apply the same year/month/week filtering as earlier
+#                     df_filtered = df_r
+#                     if 'date' in df_filtered.columns and not df_filtered['date'].isna().all():
+#                         if year is not None:
+#                             df_filtered = df_filtered[df_filtered['date'].dt.year == int(year)]
+#                         if month is not None:
+#                             df_filtered = df_filtered[df_filtered['date'].dt.month == int(month)]
+#                         if week is not None and month is not None:
+#                             df_filtered['week_in_month'] = df_filtered['date'].apply(_week_of_month_int)
+#                             df_filtered = df_filtered[df_filtered['week_in_month'] == int(week)]
 
-                    # now group by entity and compute per-city summary (min/max/mean/count + dates)
-                    if df_filtered.empty:
-                        table_rows = []
-                    else:
-                        # per-city aggregates (df_filtered already filtered by year/month/week)
-                        agg_df = df_filtered.groupby(df_filtered['entity'].astype(str)).agg(
-                            min_value=('value','min'),
-                            max_value=('value','max'),
-                            mean_value=('value','mean'),
-                            count=('value','count')
-                        ).reset_index().rename(columns={'entity':'city'})
+#                     # now group by entity and compute per-city summary (min/max/mean/count + dates)
+#                     if df_filtered.empty:
+#                         table_rows = []
+#                     else:
+#                         # per-city aggregates (df_filtered already filtered by year/month/week)
+#                         agg_df = df_filtered.groupby(df_filtered['entity'].astype(str)).agg(
+#                             min_value=('value','min'),
+#                             max_value=('value','max'),
+#                             mean_value=('value','mean'),
+#                             count=('value','count')
+#                         ).reset_index().rename(columns={'entity':'city'})
 
-                        # attach min/max dates if available
-                        if 'date' in df_filtered.columns and not df_filtered['date'].isna().all():
-                            min_dates = df_filtered.groupby('entity')['date'].min().reset_index().rename(columns={'entity':'city','date':'min_date'})
-                            max_dates = df_filtered.groupby('entity')['date'].max().reset_index().rename(columns={'entity':'city','date':'max_date'})
-                            agg_df = agg_df.merge(min_dates, on='city', how='left').merge(max_dates, on='city', how='left')
+#                         # attach min/max dates if available
+#                         if 'date' in df_filtered.columns and not df_filtered['date'].isna().all():
+#                             min_dates = df_filtered.groupby('entity')['date'].min().reset_index().rename(columns={'entity':'city','date':'min_date'})
+#                             max_dates = df_filtered.groupby('entity')['date'].max().reset_index().rename(columns={'entity':'city','date':'max_date'})
+#                             agg_df = agg_df.merge(min_dates, on='city', how='left').merge(max_dates, on='city', how='left')
 
-                        # attach province if present
-                        if 'province' in df_filtered.columns and df_filtered['province'].notna().any():
-                            prov_map = df_filtered[['entity','province']].drop_duplicates('entity').rename(columns={'entity':'city'})
-                            agg_df = agg_df.merge(prov_map, on='city', how='left')
+#                         # attach province if present
+#                         if 'province' in df_filtered.columns and df_filtered['province'].notna().any():
+#                             prov_map = df_filtered[['entity','province']].drop_duplicates('entity').rename(columns={'entity':'city'})
+#                             agg_df = agg_df.merge(prov_map, on='city', how='left')
 
-                        # --- NEW: compute prov_vals (mean of city means) and island-level stats ---
-                        try:
-                            # ensure 'province' column exists on agg_df (may be missing when source had no province)
-                            if 'province' not in agg_df.columns:
-                                agg_df['province'] = None
+#                         # --- NEW: compute prov_vals (mean of city means) and island-level stats ---
+#                         try:
+#                             # ensure 'province' column exists on agg_df (may be missing when source had no province)
+#                             if 'province' not in agg_df.columns:
+#                                 agg_df['province'] = None
 
-                            tmp_city_means = agg_df[['city','mean_value','province']].copy()
-                            tmp_city_means['province'] = tmp_city_means['province'].astype(object)
-                            prov_vals = tmp_city_means.groupby('province', dropna=False, as_index=False).agg(
-                                value=('mean_value','mean'),
-                                n_cities=('city','nunique')
-                            ).reset_index(drop=True)
-                            prov_vals['province'] = prov_vals['province'].apply(lambda x: None if pd.isna(x) else str(x).strip())
-                            prov_vals['value'] = prov_vals['value'].apply(_safe_float_or_none)
-                            # map island
-                            prov_vals['island'] = prov_vals['province'].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
-                            # fallback island from df_filtered if missing
-                            for i, row in prov_vals.iterrows():
-                                if not row.get('island'):
-                                    vals = df_filtered.loc[df_filtered.get('province', pd.Series(dtype=object)).astype(str).str.strip() == (row.get('province') or ''), 'island'].dropna().unique()
-                                    prov_vals.at[i, 'island'] = vals[0] if len(vals) else None
-                        except Exception:
-                            prov_vals = pd.DataFrame(columns=['province','value','n_cities','island'])
+#                             tmp_city_means = agg_df[['city','mean_value','province']].copy()
+#                             tmp_city_means['province'] = tmp_city_means['province'].astype(object)
+#                             prov_vals = tmp_city_means.groupby('province', dropna=False, as_index=False).agg(
+#                                 value=('mean_value','mean'),
+#                                 n_cities=('city','nunique')
+#                             ).reset_index(drop=True)
+#                             prov_vals['province'] = prov_vals['province'].apply(lambda x: None if pd.isna(x) else str(x).strip())
+#                             prov_vals['value'] = prov_vals['value'].apply(_safe_float_or_none)
+#                             # map island
+#                             prov_vals['island'] = prov_vals['province'].astype(str).str.upper().map(PROVINCE_TO_ISLAND)
+#                             # fallback island from df_filtered if missing
+#                             for i, row in prov_vals.iterrows():
+#                                 if not row.get('island'):
+#                                     vals = df_filtered.loc[df_filtered.get('province', pd.Series(dtype=object)).astype(str).str.strip() == (row.get('province') or ''), 'island'].dropna().unique()
+#                                     prov_vals.at[i, 'island'] = vals[0] if len(vals) else None
+#                         except Exception:
+#                             prov_vals = pd.DataFrame(columns=['province','value','n_cities','island'])
 
-                        # compute island-level means (unweighted mean of province values)
-                        try:
-                            island_means_series = prov_vals.groupby('island', dropna=False)['value'].mean()
-                            island_means = { (k if (k is not None and not (isinstance(k,float) and pd.isna(k))) else 'unknown'): _safe_float_or_none(v) for k,v in island_means_series.items() }
-                        except Exception:
-                            island_means = {}
+#                         # compute island-level means (unweighted mean of province values)
+#                         try:
+#                             island_means_series = prov_vals.groupby('island', dropna=False)['value'].mean()
+#                             island_means = { (k if (k is not None and not (isinstance(k,float) and pd.isna(k))) else 'unknown'): _safe_float_or_none(v) for k,v in island_means_series.items() }
+#                         except Exception:
+#                             island_means = {}
 
-                        # national mean computed from city-level means (agg_df.mean_value)
-                        try:
-                            city_vals = [ _safe_float_or_none(v) for v in tmp_city_means['mean_value'].tolist() if v is not None ]
-                            national_mean = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
-                        except Exception:
-                            national_mean = None
+#                         # national mean computed from city-level means (agg_df.mean_value)
+#                         try:
+#                             city_vals = [ _safe_float_or_none(v) for v in tmp_city_means['mean_value'].tolist() if v is not None ]
+#                             national_mean = _safe_float_or_none(np.mean(city_vals) if city_vals else None)
+#                         except Exception:
+#                             national_mean = None
 
-                        # now build table_rows and inject island_mean/national_mean
-                        table_rows = []
-                        for r in agg_df.itertuples(index=False):
-                            prov_val = getattr(r, 'province', None) if 'province' in agg_df.columns else None
-                            island_val = None
-                            if prov_val:
-                                island_val = PROVINCE_TO_ISLAND.get(str(prov_val).strip().upper()) if PROVINCE_TO_ISLAND else None
-                                # fallback to prov_vals mapping if needed
-                                if not island_val:
-                                    pv = prov_vals.loc[prov_vals['province'] == (str(prov_val).strip()), 'island']
-                                    if not pv.empty:
-                                        island_val = pv.iloc[0]
-                            isl_key = island_val if island_val else 'unknown'
-                            table_rows.append({
-                                "city": getattr(r,'city',None),
-                                "province": prov_val,
-                                "island": island_val,
-                                "min": _safe_float_or_none(getattr(r,'min_value',None)),
-                                "min_date": (getattr(r,'min_date').date().isoformat() if getattr(r,'min_date',None) is not pd.NaT and getattr(r,'min_date',None) is not None else None),
-                                "max": _safe_float_or_none(getattr(r,'max_value',None)),
-                                "max_date": (getattr(r,'max_date').date().isoformat() if getattr(r,'max_date',None) is not pd.NaT and getattr(r,'max_date',None) is not None else None),
-                                "mean": _safe_float_or_none(getattr(r,'mean_value',None)),
-                                "count": int(getattr(r,'count',0) or 0),
-                                # supply island_mean computed from prov_vals (mean of province means) and national_mean
-                                "island_mean": island_means.get(isl_key if isl_key else 'unknown'),
-                                "national_mean": national_mean
-                            })
+#                         # now build table_rows and inject island_mean/national_mean
+#                         table_rows = []
+#                         for r in agg_df.itertuples(index=False):
+#                             prov_val = getattr(r, 'province', None) if 'province' in agg_df.columns else None
+#                             island_val = None
+#                             if prov_val:
+#                                 island_val = PROVINCE_TO_ISLAND.get(str(prov_val).strip().upper()) if PROVINCE_TO_ISLAND else None
+#                                 # fallback to prov_vals mapping if needed
+#                                 if not island_val:
+#                                     pv = prov_vals.loc[prov_vals['province'] == (str(prov_val).strip()), 'island']
+#                                     if not pv.empty:
+#                                         island_val = pv.iloc[0]
+#                             isl_key = island_val if island_val else 'unknown'
+#                             table_rows.append({
+#                                 "city": getattr(r,'city',None),
+#                                 "province": prov_val,
+#                                 "island": island_val,
+#                                 "min": _safe_float_or_none(getattr(r,'min_value',None)),
+#                                 "min_date": (getattr(r,'min_date').date().isoformat() if getattr(r,'min_date',None) is not pd.NaT and getattr(r,'min_date',None) is not None else None),
+#                                 "max": _safe_float_or_none(getattr(r,'max_value',None)),
+#                                 "max_date": (getattr(r,'max_date').date().isoformat() if getattr(r,'max_date',None) is not pd.NaT and getattr(r,'max_date',None) is not None else None),
+#                                 "mean": _safe_float_or_none(getattr(r,'mean_value',None)),
+#                                 "count": int(getattr(r,'count',0) or 0),
+#                                 # supply island_mean computed from prov_vals (mean of province means) and national_mean
+#                                 "island_mean": island_means.get(isl_key if isl_key else 'unknown'),
+#                                 "national_mean": national_mean
+#                             })
 
-                    # filter table_rows for the requested province (since this endpoint is province-scoped)
-                    if page_cities:
-                        # we only need rows that belong to the page slice; but raw precomputed likely contains many provinces/cities
-                        # normalize match by province name casefold
-                        prov_l = value.strip().casefold()
-                        filtered_rows = [tr for tr in table_rows if (str(tr.get('province') or '').strip().casefold() == prov_l)]
-                    else:
-                        filtered_rows = table_rows
+#                     # filter table_rows for the requested province (since this endpoint is province-scoped)
+#                     if page_cities:
+#                         # we only need rows that belong to the page slice; but raw precomputed likely contains many provinces/cities
+#                         # normalize match by province name casefold
+#                         prov_l = value.strip().casefold()
+#                         filtered_rows = [tr for tr in table_rows if (str(tr.get('province') or '').strip().casefold() == prov_l)]
+#                     else:
+#                         filtered_rows = table_rows
 
-                    # now prepare the response for predict mode using precomputed
-                    safe_rows = [_sanitize_for_json(r) for r in filtered_rows]
-                    return jsonify({
-                        "mode": "province",
-                        "value": value,
-                        "count": len(safe_rows),
-                        "page": int(page),
-                        "page_size": int(page_size),
-                        "rows": safe_rows,
-                        "predict": True,
-                        "horizon_days": int(horizon),
-                        "precomputed": True,
-                        "generated_at": pre.get("generated_at"),
-                        "model_version": pre.get("model_version")
-                    })
-                # if no usable raw_entries -> continue to fallback to runtime predict
-            # else pre is None -> fallback to runtime per-entity prediction
+#                     # now prepare the response for predict mode using precomputed
+#                     safe_rows = [_sanitize_for_json(r) for r in filtered_rows]
+#                     return jsonify({
+#                         "mode": "province",
+#                         "value": value,
+#                         "count": len(safe_rows),
+#                         "page": int(page),
+#                         "page_size": int(page_size),
+#                         "rows": safe_rows,
+#                         "predict": True,
+#                         "horizon_days": int(horizon),
+#                         "precomputed": True,
+#                         "generated_at": pre.get("generated_at"),
+#                         "model_version": pre.get("model_version")
+#                     })
+#                 # if no usable raw_entries -> continue to fallback to runtime predict
+#             # else pre is None -> fallback to runtime per-entity prediction
 
-        # --- PREDICT MODE: build rows with predictions (runtime fallback) ---
-        # (if you have runtime predict code below, it should return a response as well)
-        # SAFE FALLBACK: jika tidak ada response di jalur predict, kembalikan pesan jelas agar Flask tidak return None
-    if do_predict:
-        app.logger.error("api_region_summary: predict requested but no valid response produced (precomputed missing/empty and runtime fallback did not return). "
-                            "mode=%s value=%s year=%s month=%s week=%s", mode, value, year, month, week)
-        return jsonify({
-            "error": "predict requested but no data available",
-            "mode": mode,
-            "value": value,
-            "count": 0,
-            "rows": [],
-            "predict": True,
-            "horizon_days": int(horizon),
-            "precomputed": pre is not None
-        }), 500
+#         # --- PREDICT MODE: build rows with predictions (runtime fallback) ---
+#         # (if you have runtime predict code below, it should return a response as well)
+#         # SAFE FALLBACK: jika tidak ada response di jalur predict, kembalikan pesan jelas agar Flask tidak return None
+#     if do_predict:
+#         app.logger.error("api_region_summary: predict requested but no valid response produced (precomputed missing/empty and runtime fallback did not return). "
+#                             "mode=%s value=%s year=%s month=%s week=%s", mode, value, year, month, week)
+#         return jsonify({
+#             "error": "predict requested but no data available",
+#             "mode": mode,
+#             "value": value,
+#             "count": 0,
+#             "rows": [],
+#             "predict": True,
+#             "horizon_days": int(horizon),
+#             "precomputed": pre is not None
+#         }), 500
 
 def _test_bounds_for_entity(entity):
     """

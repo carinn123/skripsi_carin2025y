@@ -2,263 +2,467 @@
 # -*- coding: utf-8 -*-
 
 from pathlib import Path
-import json, time, warnings
+import matplotlib.dates as mdates
+
+import time, warnings
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import joblib
-from datetime import timedelta
+import matplotlib.pyplot as plt
 
 # sklearn
-from sklearn.experimental import enable_hist_gradient_boosting  # noqa: F401
-from sklearn.ensemble import HistGradientBoostingRegressor as HGBR
-
-
-
-
-
+from sklearn.experimental import enable_hist_gradient_boosting  # noqa
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
-# ========== CONFIG ==========
+# ================= CONFIG =================
 DATA_PATH = r"C:\Users\ASUS\skripsi_carin\data\dataset.xlsx"
-OUTDIR    = Path(r"C:\Users\ASUS\Documents\skripsi mancing\models_hgbr300_carin_only")
-TEST_DAYS = 30
-N_SPLITS_CV = 3
+OUTDIR = Path(r"C:\Users\ASUS\Documents\skripsi mancing\models_final_visual")
+
+TRAIN_START = "2020-01-01"
+TRAIN_END   = "2024-06-30"
+TEST_START  = "2024-07-01"
+TEST_END    = "2025-07-01"
+
 SEED = 42
+N_SPLITS_CV = 3
 
-PARAM_GRID = {
-    "learning_rate":      [0.05, 0.03, 0.01],
-    "max_depth":          [1, 2, 3],
-    "max_iter":           [150, 300, 450],
-    "l2_regularization":  [0.0, 1e-3],
-    "min_samples_leaf":   [10, 30],
-}
-EARLY_STOP_KW = dict(early_stopping=True, validation_fraction=0.15, n_iter_no_change=20)
-
-# daftar kota (sesbuaikan kalau perlu)
-# CITY_NAMES = ["Kota Bandung","Kota Bekasi","Kota Bogor","Kota Depok","Kota Sukabumi", "Kab. Sragen","Kab. Banyumas","Kab Boyolali","Kab. Bulukomba","Kab. Bulungan", "Kab.Bungo","Kab. Cirebon","Kab. Jember"]
-
-
-# CITY_NAMES = [
-#    "Kota Banggai",
-   
-# ][:105]
 CITY_NAMES = [
-    "Kota Maluku","Kota Balikpapan","Kota Banda Aceh","Kota Bandar Lampung","Kota Bandung",
-    "Kota Banggai","Kota Banjarmasin","Kab. Banyumas","Kab. Banyuwangi","Kota Batam",
-    "Kota Bau - Bau","Kota Bekasi","Kota Bengkulu","Kota Bima","Kota Blitar","Kota Bogor",
-    "Kota Bontang","Kab. Boyolali","Kab. Bulukomba","Kab. Bulungan","Kab. Bungo",
-    "Kab. Cilacap","Kota Cilegon","Kota Cirebon","Kab. Cirebon","Kota Denpasar","Kota Depok",
-    "Kota Dumai","Kota Gorontalo","Kab. Gorontalo","Kota Gunung Sitoli","Kota Jakarta Pusat",
-    "Kota Jambi","Kota Jayapura","Kab. Jayawijaya","Kab. Jember","Kab. Sintang",
-    "Kab. Karanganyar","Kota Kediri","Kota Kendari","Kab.Klaten","Kab Kotabaru","Kotamobagu",
-    "Kab. Kudus","Kota Kupang","Kota Lhokseumawe","Kab. Lombok Timur","Kota Lubuk Linggau",
-    "Kota Madiun","Kab. Majene","Kota Makassar","Kota Malang","Kota Mamuju","Kota Manado",
-    "Kab. Manokwari","Kota Mataram","Kota Maumere","Kota Medan","Kab. Merauke","Kota Metro",
-    "Kota Meulaboh","Kab. Mimika","Kab. Nabire","Kota Padang","Kota Padang Sidempuan",
-    "Kota Palangkaraya","Kota Palembang","Kota Palopo","Kota Palu","Kota Pangkalpinang",
-    "Kota Pare -Pare","Kota Pekanbaru","Kota Pematang Siantar","Kab. Polewali Mandar",
-    "Kota Pontianak","Kota Probolinggo","Kota Samarinda","Kota Sampit","Kota Semarang",
-    "Kota Serang","Kota Sibolga","Kota Singkawang","Kota Sorong","Kab Sragen","Kota Sukabumi",
-    "Kab. Sukoharjo","Kab. Sumba Timur","Kab. Sumbawa","Kab. Sumenep","Kota Surabaya",
-    "Kota Surakarta (Solo)","Kota Tanggerang","Kota Tanjung","Kota Tanjung Pandan",
-    "Kota Tanjung Pinang","Kota Tarakan","Kota Tasikmalaya","Kota Sumenep",
-    "Kota Tembilahan","Kota Ternate","Kota Tual","Kota Watampone","Kab. Wonogiri","Kota Yogyakarta"
-][:105]
-
-
-# 12 eksperimen fitur
-FEATURE_EXPERIMENTS = [
-    {"name":"lag1"        , "LAGS":[]   , "ROLLS":[]  },
-    {"name":"lag7"        , "LAGS":[7]  , "ROLLS":[]  },
-    {"name":"lag14"       , "LAGS":[14] , "ROLLS":[]  },
-    {"name":"lag30"       , "LAGS":[30] , "ROLLS":[]  },
-    {"name":"lag1_roll7"  , "LAGS":[]   , "ROLLS":[7] },
-    {"name":"lag7_roll7"  , "LAGS":[7]  , "ROLLS":[7] },
-    {"name":"lag14_roll7" , "LAGS":[14] , "ROLLS":[7] },
-    {"name":"lag30_roll7" , "LAGS":[30] , "ROLLS":[7] },
-    {"name":"lag1_roll30" , "LAGS":[]   , "ROLLS":[30]},
-    {"name":"lag7_roll30" , "LAGS":[7]  , "ROLLS":[30]},
-    {"name":"lag14_roll30", "LAGS":[14] , "ROLLS":[30]},
-    {"name":"lag30_roll30", "LAGS":[30] , "ROLLS":[30]},
+    "Kota Surabaya",
+    "Kota Depok",
+    "Kota Yogyakarta",
+    "Kotamobagu",
+    "Kota Metro",
+    "Kab. Sumenep",
+    "Kota Bogor",
 ]
 
-# ========== HELPERS ==========
-EID_DATES = ["2020-05-24","2021-05-13","2022-05-02","2023-04-22","2024-04-10","2025-03-31"]
-def make_flags(idx: pd.DatetimeIndex) -> pd.DataFrame:
-    flags = pd.DataFrame(index=idx)
-    flags["month"] = idx.month
-    flags["dayofweek"] = idx.dayofweek
-    flags["time_index"] = (idx - idx.min()).days
-    flags["is_end_of_year"] = ((idx.month == 12) & (idx.day >= 22)).astype(int)
-    flags["is_new_year"] = ((idx.month == 1) & (idx.day <= 7)).astype(int)
+# 👉 Mapping nama kota untuk tampilan grafik
+CITY_DISPLAY_NAME = {
+    "Kota Surabaya": "Surabaya",
+    "Kota Depok": "Depok",
+    "Kota Yogyakarta": "Yogyakarta",
+    "Kotamobagu": "Kotamobagu",
+    "Kota Metro": "Metro",
+    "Kab. Sumenep": "Sumenep",
+    "Kota Bogor": "Bogor",
+}
+
+PARAM_GRID = {
+    "learning_rate": [0.05, 0.03, 0.01],
+    "max_depth": [1, 2, 3],
+    "max_iter": [150, 300],
+    "l2_regularization": [0.0, 1e-3],
+    "min_samples_leaf": [10, 30],
+}
+
+EARLY_STOP = dict(
+    early_stopping=True,
+    validation_fraction=0.15,
+    n_iter_no_change=20
+)
+
+# ================= FEATURE ENGINEERING =================
+EID_DATES = [
+    "2020-05-24","2021-05-13","2022-05-02",
+    "2023-04-22","2024-04-10","2025-03-31"
+]
+
+def make_flags(idx):
+    df = pd.DataFrame(index=idx)
+    df["month"] = idx.month
+    df["dayofweek"] = idx.dayofweek
+    df["time_index"] = (idx - idx.min()).days
+
     eid = np.zeros(len(idx), dtype=int)
     for d in EID_DATES:
         t = pd.Timestamp(d)
-        eid |= ((idx >= t - pd.Timedelta(days=14)) & (idx <= t + pd.Timedelta(days=7))).astype(int)
-    flags["is_eid_window"] = eid
-    return flags
+        eid |= ((idx >= t - pd.Timedelta(days=14)) &
+                (idx <= t + pd.Timedelta(days=7))).astype(int)
+
+    df["is_eid_window"] = eid
+    return df
 
 @dataclass
 class FeatureCfg:
-    add_lags: list
+    lags: list
     rolls: list
 
-def build_features_level_target(y: pd.Series, cfg: FeatureCfg):
-    y = pd.Series(pd.to_numeric(y, errors="coerce"), index=pd.DatetimeIndex(y.index)).astype(float)
+def build_features(y, cfg: FeatureCfg):
+    y = y.astype(float)
     X = pd.DataFrame(index=y.index)
+
     X["lag_1"] = y.shift(1)
-    for L in (cfg.add_lags or []):
-        if L == 1: continue
-        X[f"lag_{L}"] = y.shift(L)
-    for W in (cfg.rolls or []):
-        X[f"rollmean_{W}"] = y.shift(1).rolling(W, min_periods=max(1, W//2)).mean()
-    X = X.join(make_flags(X.index))
-    df = pd.concat([X, y.rename("y")], axis=1).dropna()
-    y_target = df.pop("y")
-    return df, y_target
 
-def ensure_dir(p: Path):
-    p.mkdir(parents=True, exist_ok=True); return p
+    for L in cfg.lags:
+        if L != 1:
+            X[f"lag_{L}"] = y.shift(L)
 
-def fmt_hhmmss(seconds: float) -> str:
-    total = int(round(seconds))
-    h, rem = divmod(total, 3600)
-    m, s = divmod(rem, 60)
-    return f"{h:02d}:{m:02d}:{s:02d}"
-
-def rmse(y_true, y_pred):
-    return float(np.sqrt(mean_squared_error(y_true, y_pred)))
-
-def mape_pct(y_true, y_pred):
-    y_true = np.asarray(y_true, float); y_pred = np.asarray(y_pred, float)
-    denom = np.clip(np.abs(y_true), 1e-9, None)
-    return float(np.mean(np.abs((y_true - y_pred) / denom)) * 100.0)
-
-# ========== PROCESSING ==========
-def process_city(df_all: pd.DataFrame, city_name: str, shared_best_dir: Path) -> dict:
-    if city_name not in df_all.columns:
-        print(f"[SKIP] {city_name}: column not found."); return {"city": city_name, "ok": False}
-
-    series_full = (
-        pd.Series(pd.to_numeric(df_all[city_name], errors="coerce").values,
-                  index=pd.DatetimeIndex(df_all["date"]))
-          .asfreq("D").ffill().bfill()
-    )
-    if len(series_full) <= TEST_DAYS + 200:
-        print(f"[SKIP] {city_name}: series too short (len={len(series_full)})."); return {"city": city_name, "ok": False}
-
-    city_safe = city_name.replace("/", "-").replace("\\", "-").replace(" ", "_")[:180]
-    # use the shared folder for all cities
-    best_dir = shared_best_dir
-
-    best_record = {"r2": -1e9, "exp_name": None, "model": None, "feature_cols": None, "metrics": None}
-
-    for exp in FEATURE_EXPERIMENTS:
-        add_lags = exp["LAGS"]; rolls = exp["ROLLS"]; exp_name = exp["name"]
-
-        X_all, y_all = build_features_level_target(series_full, FeatureCfg(add_lags=add_lags, rolls=rolls))
-        if len(X_all) <= TEST_DAYS + 50:
-            print(f"[SKIP] {city_name} | {exp_name}: too short after dropna (len={len(X_all)}).")
-            continue
-
-        X_train, X_test = X_all.iloc[:-TEST_DAYS], X_all.iloc[-TEST_DAYS:]
-        y_train, y_test = y_all.iloc[:-TEST_DAYS], y_all.iloc[-TEST_DAYS:]
-
-        max_lookback = int(max([1, *add_lags, *(rolls or [0])]))
-        try:
-            tscv = TimeSeriesSplit(n_splits=N_SPLITS_CV, gap=max_lookback)
-            gap_used = max_lookback
-        except TypeError:
-            tscv = TimeSeriesSplit(n_splits=N_SPLITS_CV)
-            gap_used = 0
-
-        base = HGBR(loss="squared_error", random_state=SEED, **EARLY_STOP_KW)
-        gs = GridSearchCV(estimator=base, param_grid=PARAM_GRID, scoring="r2",
-                          refit=True, cv=tscv, n_jobs=-1, verbose=0, return_train_score=False)
-        t0 = time.perf_counter()
-        gs.fit(X_train, y_train)
-        train_secs = time.perf_counter() - t0
-        train_hms = fmt_hhmmss(train_secs)
-
-        best_model = gs.best_estimator_
-        cv_best_r2 = float(gs.best_score_)
-
-        y_pred = best_model.predict(X_test)
-        r2_val = float(r2_score(y_test, y_pred))
-        mae_val = float(mean_absolute_error(y_test, y_pred))
-        rmse_val = float(rmse(y_test, y_pred))
-        mse_val = float(mean_squared_error(y_test, y_pred))
-        mape_val = float(mape_pct(y_test, y_pred))
-
-        metrics = dict(
-            city=city_name, exp=exp_name,
-            lags=[1, *add_lags], rolls=rolls,
-            r2=r2_val, mae=mae_val, rmse=rmse_val, mse=mse_val, mape=mape_val,
-            cv_best_r2=cv_best_r2, cv_refit_metric="r2",
-            n_total=int(len(X_all)), n_train=int(len(X_train)), n_test=int(len(X_test)),
-            train_time_seconds=float(train_secs), train_time_hhmmss=train_hms, cv_gap=int(gap_used),
-            best_params=gs.best_params_
+    for W in cfg.rolls:
+        X[f"rollmean_{W}"] = (
+            y.shift(1)
+            .rolling(W, min_periods=W // 2)
+            .mean()
         )
 
-        if r2_val > best_record["r2"]:
-            best_record.update(
-                r2=r2_val,
-                exp_name=exp_name,
-                model=best_model,
-                feature_cols=list(X_train.columns),
-                metrics=metrics
-            )
+    X = X.join(make_flags(X.index))
+    df = pd.concat([X, y.rename("y")], axis=1).dropna()
+    return df.drop(columns="y"), df["y"]
 
-        print(f"{city_name} | {exp_name} | TEST R2={r2_val:.4f} | CV r2={cv_best_r2:.4f} | time={train_hms}")
+# ================= METRICS =================
+def rmse(y, yp):
+    return np.sqrt(mean_squared_error(y, yp))
 
-    # save only the pack (joblib) for best model into the shared folder
-    if best_record["model"] is not None:
-        pack = {
-            "model": best_record["model"],
-            "feature_cols": best_record["feature_cols"],
-            "best_config": {
-                "mode": "level",
-                "transform": "none",
-                "alpha_blend": 1.0,
-                "train_until": None,
-                "exp_name": best_record["exp_name"],
-            },
-            "metrics": best_record["metrics"],
-        }
-        # filename includes city_safe and exp_name so there are no collisions
+def mape(y, yp):
+    y, yp = np.array(y), np.array(yp)
+    return np.mean(np.abs((y - yp) / np.clip(np.abs(y), 1e-9, None))) * 100
 
 
-        pack_path = best_dir / f"{city_safe}__{best_record['exp_name']}__best_pack.joblib"
-        joblib.dump(pack, pack_path)
-        
-        
-        
-        print(f"[SAVED PACK] {city_name} -> {pack_path}")
-        return {"city": city_name, "ok": True, "best_r2": float(best_record["r2"]), "pack_path": str(pack_path)}
+def plot_actual_vs_pred(dates, y_actual, y_pred, city_key, outdir):
+    
+    display_city = CITY_DISPLAY_NAME.get(city_key, city_key)
+
+    # smoothing ONLY for visualization
+    y_actual_s = pd.Series(y_actual).rolling(7, center=True).mean()
+    y_pred_s   = pd.Series(y_pred).rolling(7, center=True).mean()
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    ax.plot(
+        dates,
+        y_actual_s,
+        label="Actual Price",
+        color="#00FF66",
+        linewidth=3.5,
+        solid_capstyle="round"
+    )
+
+    ax.plot(
+        dates,
+        y_pred_s,
+        label="Predicted Price",
+        color="#7A1FA2",
+        linewidth=3.5,
+        linestyle="--"
+    )
+
+    # ===== AXIS LABELS =====
+    ax.set_xlabel("Date", fontsize=13, labelpad=8)
+    ax.set_ylabel("Price (Indonesian Rupiah)", fontsize=13, labelpad=10)
+
+    # ===== TITLE =====
+    ax.set_title(
+        f"{display_city}",
+        fontsize=14,
+        weight="bold",
+        pad=12
+    )
+
+    # ===== TICK SIZE + LEBIH BANYAK TICKS =====
+    ax.tick_params(axis="both", which="major", labelsize=11, width=1.5, length=6)
+    ax.tick_params(axis="both", which="minor", labelsize=9, width=1, length=3)
+    
+    # ===== FORMAT SUMBU X (TANGGAL LEBIH RAPAT) =====
+    # Tentukan interval berdasarkan range data
+    date_range = (dates.max() - dates.min()).days
+    
+    if date_range > 300:  # lebih dari 1 tahun
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))  # tiap 2 bulan
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b\n%Y'))
+        ax.xaxis.set_minor_locator(mdates.MonthLocator())
+    else:  # kurang dari 1 tahun
+        ax.xaxis.set_major_locator(mdates.MonthLocator())  # tiap bulan
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b\n%Y'))
+        ax.xaxis.set_minor_locator(mdates.WeekdayLocator(interval=2))
+    
+    # ===== FORMAT SUMBU Y (HARGA LEBIH RAPAT) =====
+    # Bikin tick Y lebih banyak dan rapat
+    y_min = min(y_actual_s.min(), y_pred_s.min())
+    y_max = max(y_actual_s.max(), y_pred_s.max())
+    y_range = y_max - y_min
+    
+    # Tentukan interval yang masuk akal
+    if y_range > 5000:
+        y_step = 1000  # interval Rp 1000
+    elif y_range > 2000:
+        y_step = 500
+    elif y_range > 1000:
+        y_step = 200
     else:
-        print(f"[NO MODEL] {city_name}: nothing saved.")
-        return {"city": city_name, "ok": False}
+        y_step = 100
+    
+    # Buat tick locations
+    y_ticks = np.arange(
+        np.floor(y_min / y_step) * y_step,
+        np.ceil(y_max / y_step) * y_step + y_step,
+        y_step
+    )
+    ax.set_yticks(y_ticks)
+    
+    # Minor ticks untuk Y
+    ax.yaxis.set_minor_locator(plt.MultipleLocator(y_step / 2))
 
+    # ===== GRID (LEBIH JELAS) =====
+    ax.grid(True, which='major', linestyle='-', alpha=0.3, linewidth=1)
+    ax.grid(True, which='minor', linestyle=':', alpha=0.15, linewidth=0.5)
+
+    # ===== LEGEND =====
+    ax.legend(
+        fontsize=11,
+        loc="upper left",
+        frameon=True,
+        fancybox=True,
+        shadow=True
+    )
+
+    # ===== DEMPETIN KE DATA (INI PENTING!) =====
+    ax.margins(x=0.005, y=0.02)  # lebih kecil = lebih dempet
+    
+    # Set limit Y yang lebih ketat
+    ax.set_ylim(y_min * 0.995, y_max * 1.005)
+
+    # ===== ROTASI LABEL X (BIAR GA KETUMPUK) =====
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=0, ha='center')
+
+    # ===== FINAL TOUCH =====
+    fig.tight_layout()
+    
+    # Adjust margins biar maksimal padat
+    fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.12)
+
+    fname = display_city.replace(" ", "_")
+    fig.savefig(outdir / f"{fname}_actual_vs_predicted.png", dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+# ================= PROCESS =================
+
+def plot_two_cities_side_by_side(dates1, y_actual1, y_pred1, city_key1,
+                                   dates2, y_actual2, y_pred2, city_key2, outdir):
+    """
+    Plot 2 kota dalam 1 gambar (kiri-kanan)
+    """
+    
+    display_city1 = CITY_DISPLAY_NAME.get(city_key1, city_key1)
+    display_city2 = CITY_DISPLAY_NAME.get(city_key2, city_key2)
+
+    # Smoothing
+    y_actual1_s = pd.Series(y_actual1).rolling(7, center=True).mean()
+    y_pred1_s   = pd.Series(y_pred1).rolling(7, center=True).mean()
+    y_actual2_s = pd.Series(y_actual2).rolling(7, center=True).mean()
+    y_pred2_s   = pd.Series(y_pred2).rolling(7, center=True).mean()
+
+    # BIKIN FIGURE DENGAN 2 SUBPLOT (1 baris, 2 kolom)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+
+    # ========== PLOT KIRI (City 1) ==========
+    ax1.plot(dates1, y_actual1_s, label="Actual Price", 
+             color="#00FF66", linewidth=5, solid_capstyle="round")
+    ax1.plot(dates1, y_pred1_s, label="Predicted Price",
+             color="#7A1FA2", linewidth=5, linestyle="--")
+    
+    ax1.set_xlabel("Date", fontsize=22, labelpad=12, weight='bold')
+    ax1.set_ylabel("Price (Indonesian Rupiah)", fontsize=22, labelpad=14, weight='bold')
+    ax1.set_title(f"Actual vs Predicted – {display_city1}", 
+                  fontsize=24, weight="bold", pad=20)
+    
+    # Format X axis
+    date_range1 = (dates1.max() - dates1.min()).days
+    total_months1 = date_range1 / 30
+    month_interval1 = max(1, int(np.ceil(total_months1 / 5)))
+    ax1.xaxis.set_major_locator(mdates.MonthLocator(interval=month_interval1))
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%b\n%Y'))
+    ax1.xaxis.set_minor_locator(plt.NullLocator())
+    
+    # Format Y axis
+    y_min1 = min(y_actual1_s.min(), y_pred1_s.min())
+    y_max1 = max(y_actual1_s.max(), y_pred1_s.max())
+    y_range1 = y_max1 - y_min1
+    
+    if y_range1 > 5000:
+        y_step1 = 1000
+    elif y_range1 > 2000:
+        y_step1 = 500
+    elif y_range1 > 1000:
+        y_step1 = 200
+    else:
+        y_step1 = 100
+    
+    y_ticks1 = np.arange(
+        np.floor(y_min1 / y_step1) * y_step1,
+        np.ceil(y_max1 / y_step1) * y_step1 + y_step1,
+        y_step1
+    )
+    ax1.set_yticks(y_ticks1)
+    ax1.yaxis.set_minor_locator(plt.MultipleLocator(y_step1 / 2))
+    
+    ax1.tick_params(axis="both", which="major", labelsize=18, width=2.5, length=10)
+    ax1.grid(True, which='major', linestyle='-', alpha=0.4, linewidth=1.2)
+    ax1.legend(fontsize=20, loc="upper left", frameon=True, fancybox=True, shadow=True)
+    ax1.margins(x=0, y=0.01)
+    ax1.set_ylim(y_min1 * 0.998, y_max1 * 1.002)
+    ax1.set_xlim(dates1.min(), dates1.max())
+
+    # ========== PLOT KANAN (City 2) ==========
+    ax2.plot(dates2, y_actual2_s, label="Actual Price",
+             color="#00FF66", linewidth=5, solid_capstyle="round")
+    ax2.plot(dates2, y_pred2_s, label="Predicted Price",
+             color="#7A1FA2", linewidth=5, linestyle="--")
+    
+    ax2.set_xlabel("Date", fontsize=22, labelpad=12, weight='bold')
+    ax2.set_ylabel("Price (Indonesian Rupiah)", fontsize=22, labelpad=14, weight='bold')
+    ax2.set_title(f"Actual vs Predicted – {display_city2}",
+                  fontsize=24, weight="bold", pad=20)
+    
+    # Format X axis
+    date_range2 = (dates2.max() - dates2.min()).days
+    total_months2 = date_range2 / 30
+    month_interval2 = max(1, int(np.ceil(total_months2 / 5)))
+    ax2.xaxis.set_major_locator(mdates.MonthLocator(interval=month_interval2))
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b\n%Y'))
+    ax2.xaxis.set_minor_locator(plt.NullLocator())
+    
+    # Format Y axis
+    y_min2 = min(y_actual2_s.min(), y_pred2_s.min())
+    y_max2 = max(y_actual2_s.max(), y_pred2_s.max())
+    y_range2 = y_max2 - y_min2
+    
+    if y_range2 > 5000:
+        y_step2 = 1000
+    elif y_range2 > 2000:
+        y_step2 = 500
+    elif y_range2 > 1000:
+        y_step2 = 200
+    else:
+        y_step2 = 100
+    
+    y_ticks2 = np.arange(
+        np.floor(y_min2 / y_step2) * y_step2,
+        np.ceil(y_max2 / y_step2) * y_step2 + y_step2,
+        y_step2
+    )
+    ax2.set_yticks(y_ticks2)
+    ax2.yaxis.set_minor_locator(plt.MultipleLocator(y_step2 / 2))
+    
+    ax2.tick_params(axis="both", which="major", labelsize=18, width=2.5, length=10)
+    ax2.grid(True, which='major', linestyle='-', alpha=0.4, linewidth=1.2)
+    ax2.legend(fontsize=20, loc="upper left", frameon=True, fancybox=True, shadow=True)
+    ax2.margins(x=0, y=0.01)
+    ax2.set_ylim(y_min2 * 0.998, y_max2 * 1.002)
+    ax2.set_xlim(dates2.min(), dates2.max())
+
+    # ===== FINAL TOUCH =====
+    fig.tight_layout(pad=3.0)
+    
+    fname1 = display_city1.replace(" ", "_")
+    fname2 = display_city2.replace(" ", "_")
+    fig.savefig(outdir / f"{fname1}_and_{fname2}_comparison.png", dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+# ===== MODIFIKASI FUNGSI process_city =====
+# Ubah fungsi process_city agar return data test-nya:
+
+def process_city_with_return(df, city, outdir):
+    """Versi process_city yang return data untuk di-merge"""
+    print(f"\n### Processing: {city}")
+
+    y = pd.Series(df[city].values, index=df["date"]).asfreq("D").ffill().bfill()
+    X_all, y_all = build_features(y, FeatureCfg(lags=[7, 14, 30], rolls=[7, 30]))
+
+    train_mask = (X_all.index >= TRAIN_START) & (X_all.index <= TRAIN_END)
+    test_mask  = (X_all.index >= TEST_START) & (X_all.index <= TEST_END)
+
+    X_train, y_train = X_all.loc[train_mask], y_all.loc[train_mask]
+    X_test, y_test   = X_all.loc[test_mask],  y_all.loc[test_mask]
+
+    tscv = TimeSeriesSplit(n_splits=N_SPLITS_CV)
+    model = HistGradientBoostingRegressor(loss="squared_error", random_state=SEED, **EARLY_STOP)
+    gs = GridSearchCV(model, PARAM_GRID, scoring="r2", cv=tscv, n_jobs=-1)
+    
+    t0 = time.perf_counter()
+    gs.fit(X_train, y_train)
+    train_time = time.perf_counter() - t0
+
+    best_model = gs.best_estimator_
+    y_pred = best_model.predict(X_test)
+
+    metrics = {
+        "r2": r2_score(y_test, y_pred),
+        "mae": mean_absolute_error(y_test, y_pred),
+        "rmse": rmse(y_test, y_pred),
+        "mse": mean_squared_error(y_test, y_pred),
+        "mape": mape(y_test, y_pred),
+        "best_params": gs.best_params_,
+        "train_time_sec": train_time
+    }
+
+    pack = {"model": best_model, "features": list(X_train.columns), "metrics": metrics}
+    
+    display_city = CITY_DISPLAY_NAME.get(city, city)
+    fname = display_city.replace(" ", "_")
+    joblib.dump(pack, outdir / f"{fname}_best_model.joblib")
+    
+    # Plot individual
+    plot_actual_vs_pred(X_test.index, y_test, y_pred, city, outdir)
+    
+    print(f"R2={metrics['r2']:.4f} | MAPE={metrics['mape']:.2f}%")
+    
+    # RETURN DATA BUAT DI-MERGE!
+    return {
+        "dates": X_test.index,
+        "y_actual": y_test,
+        "y_pred": y_pred,
+        "city_key": city
+    }
+
+# ================= RUN =================
+# ===== MODIFIKASI FUNGSI main() =====
 def main():
-    warnings.filterwarnings("ignore", category=UserWarning)
-    # ensure top-level OUTDIR exists
+    warnings.filterwarnings("ignore")
     OUTDIR.mkdir(parents=True, exist_ok=True)
-    # create a single shared folder for all best packs
-    shared_best_dir = ensure_dir(OUTDIR / "best_model")
 
-    df = pd.read_excel(DATA_PATH, engine="openpyxl")
-    if df.columns[0].lower() != "date":
-        df = df.rename(columns={df.columns[0]: "date"})
+    df = pd.read_excel(DATA_PATH)
+    df.columns = ["date"] + list(df.columns[1:])
     df["date"] = pd.to_datetime(df["date"])
-    df = df.sort_values("date").reset_index(drop=True)
+    df = df.sort_values("date")
 
+    # Simpan hasil semua kota
+    results = {}
     for city in CITY_NAMES:
-        print("\n" + "#"*60)
-        print(f"### Processing: {city}")
-        print("#"*60)
-        process_city(df, city, shared_best_dir)
+        results[city] = process_city_with_return(df, city, OUTDIR)
+
+    # ===== BIKIN GRAFIK GABUNGAN (CONTOH: SURABAYA + DEPOK) =====
+    print("\n### Creating merged plots...")
+    
+    # Contoh 1: Surabaya + Depok
+    plot_two_cities_side_by_side(
+        results["Kota Surabaya"]["dates"], 
+        results["Kota Surabaya"]["y_actual"],
+        results["Kota Surabaya"]["y_pred"],
+        "Kota Surabaya",
+        results["Kota Depok"]["dates"],
+        results["Kota Depok"]["y_actual"],
+        results["Kota Depok"]["y_pred"],
+        "Kota Depok",
+        OUTDIR
+    )
+    
+    # Contoh 2: Yogyakarta + Bogor (bisa ditambah sesuai kebutuhan)
+    plot_two_cities_side_by_side(
+        results["Kota Yogyakarta"]["dates"],
+        results["Kota Yogyakarta"]["y_actual"],
+        results["Kota Yogyakarta"]["y_pred"],
+        "Kota Yogyakarta",
+        results["Kota Bogor"]["dates"],
+        results["Kota Bogor"]["y_actual"],
+        results["Kota Bogor"]["y_pred"],
+        "Kota Bogor",
+        OUTDIR
+    )
+    
+    print("✅ All plots created successfully!")
 
 if __name__ == "__main__":
     main()
